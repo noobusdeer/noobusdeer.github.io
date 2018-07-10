@@ -3,13 +3,14 @@
 var Ops=Ops || {};
 Ops.Gl=Ops.Gl || {};
 Ops.Exp=Ops.Exp || {};
-Ops.Anim=Ops.Anim || {};
+Ops.Math=Ops.Math || {};
 Ops.Array=Ops.Array || {};
 Ops.Exp.Gl=Ops.Exp.Gl || {};
-Ops.Gl.Matrix=Ops.Gl.Matrix || {};
+Ops.Sidebar=Ops.Sidebar || {};
 Ops.Gl.Meshes=Ops.Gl.Meshes || {};
+Ops.Gl.Matrix=Ops.Gl.Matrix || {};
+Ops.ShaderEffects=Ops.ShaderEffects || {};
 Ops.Gl.ShaderEffects=Ops.Gl.ShaderEffects || {};
-Ops.Exp.Gl.ShaderEffects=Ops.Exp.Gl.ShaderEffects || {};
 
 //----------------
 
@@ -212,251 +213,6 @@ op.onAnimFrame=function(time)
 };
 
 Ops.Gl.MainLoop.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.Meshes.Sphere
-// 
-// **************************************************************
-
-Ops.Gl.Meshes.Sphere = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-var inStacks=op.inValueInt("stacks",32);
-var inSlices=op.inValueInt("slices",32);
-var inRadius=op.addInPort(new Port(op,"radius",OP_PORT_TYPE_VALUE));
-var inRender=op.inValueBool("Render",true);
-
-
-var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-var geomOut=op.addOutPort(new Port(op,"geometry",OP_PORT_TYPE_OBJECT));
-
-inRadius.set(1);
-geomOut.ignoreValueSerialize=true;
-
-var cgl=op.patch.cgl;
-var mesh=null;
-var geom=null;
-var geomVertices=[];
-var geomVertexNormals=[];
-var geomTexCoords=[];
-var geomVerticesIndices=[];
-
-
-inSlices.onChange=function(){ mesh=null; };
-inStacks.onChange=function(){ mesh=null; };
-inRadius.onChange=function(){ mesh=null; };
-
-op.preRender=
-render.onTriggered=function()
-{
-    if(!mesh) updateMesh();
-
-    if(inRender.get()) mesh.render(cgl.getShader());
-    
-    trigger.trigger();
-};
-
-function updateMesh()
-{
-    var nslices=Math.round(inSlices.get());
-    var nstacks=Math.round(inStacks.get());
-    if(nslices<1)nslices=1;
-    if(nstacks<1)nstacks=1;
-    var r=inRadius.get();
-    
-    uvSphere(r, nslices, nstacks);
-}
-
-// updateMesh();
-
-function circleTable(n,halfCircle)
-{
-    var i;
-    /* Table size, the sign of n flips the circle direction */
-    var size = Math.abs(n);
-
-    /* Determine the angle between samples */
-    var angle = (halfCircle?1:2)*Math.PI/n;// ( n === 0 ) ? 1 : n ;
-
-    /* Allocate memory for n samples, plus duplicate of first entry at the end */
-    var sint=[];
-    var cost=[];
-
-    /* Compute cos and sin around the circle */
-    sint[0] = 0.0;
-    cost[0] = 1.0;
-
-    for (i=0; i<size; i++)
-    {
-        sint[i] = Math.sin(angle*i);
-        cost[i] = Math.cos(angle*i);
-    }
-    
-    if (halfCircle)
-    {
-        sint[size] =  0.0;  /* sin PI */
-        cost[size] = -1.0;  /* cos PI */
-    }
-    else
-    {
-        /* Last sample is duplicate of the first (sin or cos of 2 PI) */
-        sint[size] = sint[0];
-        cost[size] = cost[0];
-    }
-    return {cost:cost,sint:sint};
-}
-
-
-// from http://math.hws.edu/graphicsbook/source/webgl/basic-object-models-IFS.js
-function uvSphere(radius, slices, stacks)
-{
-    var geom=new CGL.Geometry("sphere");
-
-    radius = radius || 0.5;
-    slices = slices || 32;
-    stacks = stacks || 16;
-    var vertexCount = (slices+1)*(stacks+1);
-    var vertices = new Float32Array( 3*vertexCount );
-    var normals = new Float32Array( 3* vertexCount );
-    var texCoords = new Float32Array( 2*vertexCount );
-    var indices = new Uint16Array( 2*slices*stacks*3 );
-    var du = 2*Math.PI/slices;
-    var dv = Math.PI/stacks;
-    var i,j,u,v,x,y,z;
-    var indexV = 0;
-    var indexT = 0;
-    for (i = 0; i <= stacks; i++)
-    {
-        v = -Math.PI/2 + i*dv;
-        for (j = 0; j <= slices; j++)
-        {
-            u = j*du;
-            x = Math.cos(u)*Math.cos(v);
-            y = Math.sin(u)*Math.cos(v);
-            z = Math.sin(v);
-
-            vertices[indexV] = radius*x;
-            normals[indexV++] = x;
-
-            vertices[indexV] = radius*y;
-            normals[indexV++] = y;
-
-            vertices[indexV] = radius*z;
-            normals[indexV++] = z;
-
-            texCoords[indexT++] = j/slices;
-            texCoords[indexT++] = i/stacks;
-        } 
-    }
-    var k = 0;
-    for (j = 0; j < stacks; j++)
-    {
-        var row1 = j*(slices+1);
-        var row2 = (j+1)*(slices+1);
-        for (i = 0; i < slices; i++)
-        {
-            indices[k++] = row1 + i;
-            indices[k++] = row2 + i;
-            indices[k++] = row2 + i + 1;
-         
-            indices[k++] = row1 + i;
-            indices[k++] = row2 + i + 1;
-            indices[k++] = row1 + i + 1;
-
-        }
-    }
-
-    geom.vertices=vertices;
-    geom.vertexNormals=normals;
-    geom.texCoords=texCoords;
-    geom.verticesIndices=indices;
-
-    geomOut.set(geom);
-
-    if(!mesh)mesh=new CGL.Mesh(cgl,geom,cgl.gl.TRIANGLE_STRIP);
-    mesh.setGeom(geom);
-
-}
-
-
-
-};
-
-Ops.Gl.Meshes.Sphere.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Array.RandomArray3x
-// 
-// **************************************************************
-
-Ops.Array.RandomArray3x = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-
-var numValues=op.addInPort(new Port(op, "numValues",OP_PORT_TYPE_VALUE));
-var seed=op.addInPort(new Port(op,"random seed"));
-var min=op.addInPort(new Port(op,"Min"));
-var max=op.addInPort(new Port(op,"Max"));
-var closed=op.inValueBool("Last == First");
-
-var values=op.addOutPort(new Port(op, "values",OP_PORT_TYPE_ARRAY));
-values.ignoreValueSerialize=true;
-
-numValues.set(100);
-min.set(-1);
-max.set(1);
-
-closed.onChange=max.onChange=init;
-min.onChange=init;
-numValues.onChange=init;
-seed.onChange=init;
-values.onLinkChanged=init;
-
-var arr=[];
-init();
-
-function init()
-{
-    Math.randomSeed=seed.get();
-
-    arr.length=Math.floor(numValues.get()*3) || 300;
-    for(var i=0;i<arr.length;i+=3)
-    {
-        arr[i+0]=Math.seededRandom() * ( max.get() - min.get() ) + min.get() ;
-        arr[i+1]=Math.seededRandom() * ( max.get() - min.get() ) + min.get() ;
-        arr[i+2]=Math.seededRandom() * ( max.get() - min.get() ) + min.get() ;
-    }
-
-    if(closed.get())
-    {
-        arr[arr.length-3+0]=arr[0];
-        arr[arr.length-3+1]=arr[1];
-        arr[arr.length-3+2]=arr[2];
-    }
-    
-    values.set(null);
-    values.set(arr);
-}
-
-
-};
-
-Ops.Array.RandomArray3x.prototype = new CABLES.Op();
 
 //----------------
 
@@ -844,402 +600,276 @@ Ops.Gl.Matrix.OrbitControls.prototype = new CABLES.Op();
 
 // **************************************************************
 // 
-// Ops.Gl.Matrix.Scale
+// Ops.Gl.Performance
 // 
 // **************************************************************
 
-Ops.Gl.Matrix.Scale = function()
+Ops.Gl.Performance = function()
 {
 Op.apply(this, arguments);
 var op=this;
 var attachments={};
-const render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-const scale=op.addInPort(new Port(op,"scale"));
-const trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
+var exe=this.addInPort(new Port(this,"exe",OP_PORT_TYPE_FUNCTION));
+var next=this.addOutPort(new Port(this,"childs",OP_PORT_TYPE_FUNCTION)) ;
 
-const cgl=op.patch.cgl;
-const vScale=vec3.create();
-scale.onChange=scaleChanged;
-scale.set(1.0);
-scaleChanged();
+var inShow=op.inValueBool("Visible",true);
 
-render.onTriggered=function()
-{
-    cgl.pushModelMatrix();
-    mat4.scale(cgl.mMatrix,cgl.mMatrix, vScale);
-    trigger.trigger();
-    cgl.popModelMatrix();
-};
-
-function scaleChanged()
-{
-    vec3.set(vScale, scale.get(),scale.get(),scale.get());
-};
-
-
-
-};
-
-Ops.Gl.Matrix.Scale.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Array.RandomArray
-// 
-// **************************************************************
-
-Ops.Array.RandomArray = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-const numValues=op.inValueInt("numValues");
-
-const seed=op.addInPort(new Port(op,"random seed"));
-const min=op.addInPort(new Port(op,"Min"));
-const max=op.addInPort(new Port(op,"Max"));
-
-const values=op.addOutPort(new Port(op, "values",OP_PORT_TYPE_ARRAY));
-values.ignoreValueSerialize=true;
-
-numValues.set(100);
-min.set(0);
-max.set(1);
-
-max.onValueChanged=init;
-min.onValueChanged=init;
-numValues.onValueChanged=init;
-seed.onValueChanged=init;
-values.onLinkChanged=init;
-
-var arr=[];
-init();
-
-function init()
-{
-    Math.randomSeed=seed.get();
-    
-    arr.length=Math.abs(parseInt(numValues.get())) || 100;
-    for(var i=0;i<arr.length;i++)
-    {
-        arr[i]=Math.seededRandom()* ( max.get() - min.get() ) + parseFloat(min.get()) ;
-    }
-    
-    values.set(null);
-    values.set(arr);
-}
-
-
-};
-
-Ops.Array.RandomArray.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Exp.Gl.ShaderEffects.AreaScaler
-// 
-// **************************************************************
-
-Ops.Exp.Gl.ShaderEffects.AreaScaler = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-attachments["areascale_vert"]="\nUNI bool MOD_smooth;\nUNI float MOD_x,MOD_y,MOD_z;\nUNI float MOD_strength;\nUNI float MOD_size;\n\nvec4 MOD_scaler(vec4 pos,vec4 worldPos,vec3 normal)\n{\n    vec3 forcePos=vec3(MOD_x,MOD_y,MOD_z);\n    vec3 vecToOrigin=worldPos.xyz-forcePos;\n    float dist=abs(length(vecToOrigin));\n    float distAlpha = (MOD_size - dist) ;\n\n    if(MOD_smooth) distAlpha=smoothstep(0.0,MOD_size,distAlpha);\n    \n    float m=(distAlpha*MOD_strength);\n    \n    #ifndef MOD_TO_ZERO\n    m+=1.0;\n    #endif\n    \n    pos.xyz*=m;\n\n    return pos;\n}\n";
-
+var outFPS=op.outValue("FPS");
+var element = document.createElement('div');
+var ctx=null;
 var cgl=op.patch.cgl;
+var opened=false;
+var frameCount=0;
+var fps=0;
+var fpsStartTime=0;
+var childsTime=0;
+var avgMsChilds=0;
+var queue=[];
+var queueChilds=[];
+var numBars=128;
+var avgMs=0;
+var selfTime=0;
+var canvas=null;
+var lastTime=0;
+var loadingCounter=0;
 
-op.render=op.addInPort(new Port(this,"render",OP_PORT_TYPE_FUNCTION));
-op.trigger=op.addOutPort(new Port(this,"trigger",OP_PORT_TYPE_FUNCTION));
+var loadingChars=['|','/','-','\\'];
 
-var inSize=op.inValue("Size",1);
-var inStrength=op.inValue("Strength",1);
-var inSmooth=op.inValueBool("Smooth",true);
-var inToZero=op.inValueBool("Keep Min Size",true);
+for(var i=0;i<numBars;i++)
+{
+    queue[i]=-1;
+    queueChilds[i]=-1;
+}
 
+element.id="performance";
+element.style.position="absolute";
+element.style.left="0px";
+element.style.top="0px";
+element.style.opacity="0.8";
+element.style.padding="10px";
+element.style.cursor="pointer";
+element.style.background="#222";
+element.style.color="white";
+element.style["font-family"]="monospace";
+element.style["font-size"]="11px";
+element.style["z-index"]="9999";
+element.innerHTML="&nbsp;";
 
-var x=op.inValue("x");
-var y=op.inValue("y");
-var z=op.inValue("z");
+var container = op.patch.cgl.canvas.parentElement;
+container.appendChild(element);
 
+element.addEventListener("click", toggleOpened);
 
+op.onDelete=function()
+{
+    element.remove();
+};
 
-var shader=null;
-
-var srcHeadVert=attachments.areascale_vert;
-
-var srcBodyVert=''
-    .endl()+'pos=MOD_scaler(pos,mMatrix*pos,attrVertNormal);' //modelMatrix*
-    .endl();
+inShow.onChange=function()
+{
+    if(!inShow.get())element.style.opacity=0;
+        else element.style.opacity=1;
     
-var moduleVert=null;
+};
 
-function removeModule()
+function toggleOpened()
 {
-    if(shader && moduleVert) shader.removeModule(moduleVert);
-    shader=null;
-}
-
-inToZero.onChange=updateToZero;
-
-function updateToZero()
-{
-    if(!shader)return;
-    if(inToZero.get()) shader.removeDefine(moduleVert.prefix+"TO_ZERO");
-        else shader.define(moduleVert.prefix+"TO_ZERO");
-
-}
-
-
-
-
-op.render.onLinkChanged=removeModule;
-
-op.render.onTriggered=function()
-{
-    if(!cgl.getShader())
+    element.style.opacity=1;
+    opened=!opened;
+    updateText();
+    if(!canvas)createCanvas();
+    if(opened)
     {
-         op.trigger.trigger();
-         return;
+        canvas.style.display="block";
+        element.style.left=numBars+"px";
+        element.style["min-height"]="56px";
+    }
+    else 
+    {
+        canvas.style.display="none";
+        element.style.left="0px";
+        element.style["min-height"]="auto";
+    }
+}
+
+function updateCanvas()
+{
+    ctx.fillStyle="#222222";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    ctx.fillStyle="#555555";
+    var k=0;
+    for(k=numBars;k>=0;k--)
+    {
+        if(queue[k]>30)ctx.fillStyle="#ff5555";
+        ctx.fillRect(numBars-k,canvas.height-queue[k]*2.5,1,queue[k]*2.5);
+        if(queue[k]>30)ctx.fillStyle="#555555";
+    }
+
+    ctx.fillStyle="#aaaaaa";
+    for(k=numBars;k>=0;k--)
+    {
+        if(queueChilds[k]>30)ctx.fillStyle="#ff00ff";
+        ctx.fillRect(numBars-k,canvas.height-queueChilds[k]*2.5,1,queueChilds[k]*2.5);
+        if(queueChilds[k]>30)ctx.fillStyle="#aaaaaa";
+    }
+
+}
+
+function createCanvas()
+{
+    canvas = document.createElement('canvas');
+    canvas.id     = "performance_"+op.patch.config.glCanvasId;
+    canvas.width  = numBars;
+    canvas.height = "128";
+    canvas.style.display   = "block";
+    canvas.style.opacity   = 0.9;
+    canvas.style.position  = "absolute";
+    canvas.style.left  = "0px";
+    canvas.style.cursor  = "pointer";
+    canvas.style.top  = "-64px";
+    canvas.style['z-index']   = "9998";
+    container.appendChild(canvas);
+    ctx = canvas.getContext('2d');
+
+    canvas.addEventListener("click", toggleOpened);
+    
+}
+
+function updateText()
+{
+
+    var warn="";
+    if(CGL.profileShaderCompiles>0)warn+='Shader compile ('+CGL.profileShaderCompileName+') ';
+    if(CGL.profileShaderGetUniform>0)warn+='Shader get uni loc! ('+CGL.profileShaderGetUniformName+')';
+    if(CGL.profileTextureResize>0)warn+='Texture resize! ';
+    if(CGL.profileFrameBuffercreate>0)warn+='Framebuffer create! ';
+    if(CGL.profileEffectBuffercreate>0)warn+='Effectbuffer create! ';
+    if(CGL.profileTextureDelete>0)warn+='Texture delete! ';
+
+    if(CGL.profileNonTypedAttrib>0)warn+='Not-Typed Buffer Attrib! '+CGL.profileNonTypedAttribNames;
+    
+    //     CGL.profileNonTypedAttrib=0;
+    // CGL.profileNonTypedAttribNames="";
+
+    // if(warn && warn.length>0)console.warn(warn);
+    
+    if(warn.length>0)
+    {
+        warn='| <span style="color:#f80;">WARNING: '+warn+'<span>';
+    }
+
+    element.innerHTML=fps+" fps | "+Math.round(childsTime*100)/100+"ms "+warn;
+    if(op.patch.loading.getProgress()!=1.0)
+    {
+        element.innerHTML+="<br/>loading "+op.patch.loading.getProgress()+' '+loadingChars[ (++loadingCounter)%loadingChars.length ];
     }
     
-    if(CABLES.UI && gui.patch().isCurrentOp(op)) 
-        gui.setTransformGizmo(
+    if(opened)
+    {
+        var count=0;
+        avgMs=0;
+        avgMsChilds=0;
+        for(var i=queue.length;i>queue.length-queue.length/3;i--)
+        {
+            if(queue[i]>-1)
             {
-                posX:x,
-                posY:y,
-                posZ:z
-            });
+                avgMs+=queue[i];
+                count++;
+            }
 
-    if(cgl.getShader()!=shader)
-    {
-        if(shader) removeModule();
-        shader=cgl.getShader();
-
-        moduleVert=shader.addModule(
+            if(queueChilds[i]>-1)
             {
-                title:op.objName,
-                name:'MODULE_VERTEX_POSITION',
-                srcHeadVert:srcHeadVert,
-                srcBodyVert:srcBodyVert
-            });
-
-        inSize.uniform=new CGL.Uniform(shader,'f',moduleVert.prefix+'size',inSize);
-        inStrength.uniform=new CGL.Uniform(shader,'f',moduleVert.prefix+'strength',inStrength);
-        inSmooth.uniform=new CGL.Uniform(shader,'f',moduleVert.prefix+'smooth',inSmooth);
-
-        x.uniform=new CGL.Uniform(shader,'f',moduleVert.prefix+'x',x);
-        y.uniform=new CGL.Uniform(shader,'f',moduleVert.prefix+'y',y);
-        z.uniform=new CGL.Uniform(shader,'f',moduleVert.prefix+'z',z);
-    }
-    
-    
-    if(!shader)return;
-
-    op.trigger.trigger();
-};
-
-
-};
-
-Ops.Exp.Gl.ShaderEffects.AreaScaler.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.MeshInstancer
-// 
-// **************************************************************
-
-Ops.Gl.MeshInstancer = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-// TODO: remove array3xtransformedinstanced....
-
-var exe=op.addInPort(new Port(op,"exe",OP_PORT_TYPE_FUNCTION));
-
-var inTransformations=op.inArray("positions");
-var inScales=op.inArray("Scale Array");
-var inScale=op.inValue("Scale",1);
-var geom=op.inObject("geom");
-geom.ignoreValueSerialize=true;
-
-var mod=null;
-var mesh=null;
-var shader=null;
-var uniDoInstancing=null;
-var recalc=true;
-var cgl=op.patch.cgl;
-
-exe.onTriggered=doRender;
-exe.onLinkChanged=removeModule;
-
-var matrixArray= new Float32Array(1);
-var m=mat4.create();
-inTransformations.onChange=reset;
-inScales.onChange=reset;
-
-
-var srcHeadVert=''
-    .endl()+'UNI float do_instancing;'
-    .endl()+'UNI float MOD_scale;'
-    
-    .endl()+'#ifdef INSTANCING'
-    .endl()+'   IN mat4 instMat;'
-    .endl()+'   OUT mat4 instModelMat;'
-    .endl()+'#endif';
-
-var srcBodyVert=''
-    .endl()+'#ifdef INSTANCING'
-    .endl()+'   if(do_instancing==1.0)'
-    .endl()+'   {'
-    .endl()+'       mMatrix*=instMat;'
-    .endl()+'       mMatrix[0][0]*=MOD_scale;'
-    .endl()+'       mMatrix[1][1]*=MOD_scale;'
-    .endl()+'       mMatrix[2][2]*=MOD_scale;'
-    .endl()+'   }'
-    .endl()+'#endif'
-    .endl();
-
-
-
-geom.onChange=function()
-{
-    if(!geom.get())
-    {
-        mesh=null;
-        return;
-    }
-    mesh=new CGL.Mesh(cgl,geom.get());
-    reset();
-};
-
-function removeModule()
-{
-    if(shader && mod)
-    {
-        shader.removeDefine('INSTANCING');
-        shader.removeModule(mod);
-        shader=null;
-    }
-}
-
-function reset()
-{
-    recalc=true;
-}
-
-function setupArray()
-{
-    if(!mesh)return;
-    
-    var transforms=inTransformations.get();
-    if(!transforms)
-    {
-        transforms=[0,0,0];
-    }
-    var num=Math.floor(transforms.length/3);
-    
-    
-    var scales=inScales.get();
-    // console.log('scales',scales);
-    // console.log('setup array!');
-
-    if(matrixArray.length!=num*16)
-    {
-        matrixArray=new Float32Array(num*16);
-    }
-
-    for(var i=0;i<num;i++)
-    {
-        mat4.identity(m);
-        mat4.translate(m,m,
-            [
-                transforms[i*3],
-                transforms[i*3+1],
-                transforms[i*3+2]
-            ]);
+                avgMsChilds+=queueChilds[i];
+            }
+        }
         
-        if(scales && scales.length>i)
-        {
-            mat4.scale(m,m,[scales[i],scales[i],scales[i]]);
-            // console.log('scale',scales[i]);
-        }
-        else
-        {
-            mat4.scale(m,m,[1,1,1]);
-        }
+        avgMs/=count;
+        avgMsChilds/=count;
 
-        for(var a=0;a<16;a++)
-        {
-            matrixArray[i*16+a]=m[a];
-        }
+        element.innerHTML+='<br/> '+cgl.canvasWidth+' x '+cgl.canvasHeight+' (x'+cgl.pixelDensity+') ';
+        element.innerHTML+='<br/>frame avg: '+Math.round(avgMsChilds*100)/100+' ms ('+Math.round(avgMsChilds/avgMs*100)+'%) / '+Math.round(avgMs*100)/100+' ms';
+        element.innerHTML+=' (self: '+Math.round((selfTime)*100)/100+' ms) ';
+        
+        element.innerHTML+='<br/>shader binds: '+Math.ceil(CGL.profileShaderBinds/fps)+
+            ' uniforms: '+Math.ceil(CGL.profileUniformCount/fps)+
+            ' mvp_uni_mat4: '+Math.ceil(CGL.profileMVPMatrixCount/fps)+
+                
+
+            ' mesh.setGeom: '+CGL.profileMeshSetGeom+
+            ' videos: '+CGL.profileVideosPlaying;
+        
     }
 
-    mesh.numInstances=num;
-    mesh.addAttribute('instMat',matrixArray,16);
-    recalc=false;
+
+    CGL.profileUniformCount=0;
+    CGL.profileShaderGetUniform=0;
+    CGL.profileShaderCompiles=0;
+    CGL.profileShaderBinds=0;
+    CGL.profileTextureResize=0;
+    CGL.profileFrameBuffercreate=0;
+    CGL.profileEffectBuffercreate=0;
+    CGL.profileTextureDelete=0;
+    CGL.profileMeshSetGeom=0;
+    CGL.profileVideosPlaying=0;
+    CGL.profileMVPMatrixCount=0;
+
+    CGL.profileNonTypedAttrib=0;
+    CGL.profileNonTypedAttribNames="";
+
 }
 
-function doRender()
+
+exe.onTriggered=function()
 {
-    if(recalc)setupArray();
-    if(matrixArray.length<=1)return;
-    if(!mesh) return;
+    var selfTimeStart=performance.now();
+    frameCount++;
 
-    if(cgl.getShader() && cgl.getShader()!=shader)
+    if(fpsStartTime===0)fpsStartTime=Date.now();
+    if(Date.now()-fpsStartTime>=1000)
     {
-        if(shader && mod)
-        {
-            shader.removeModule(mod);
-            shader=null;
-        }
-
-        shader=cgl.getShader();
-        if(!shader.hasDefine('INSTANCING'))
-        {
-            mod=shader.addModule(
-                {
-                    name: 'MODULE_VERTEX_POSITION',
-                    priority:-2,
-                    srcHeadVert: srcHeadVert,
-                    srcBodyVert: srcBodyVert
-                });
-
-            shader.define('INSTANCING');
-            uniDoInstancing=new CGL.Uniform(shader,'f','do_instancing',0);
-            inScale.uniform=new CGL.Uniform(shader,'f',mod.prefix+'scale',inScale);
-        }
-        else
-        {
-            uniDoInstancing=shader.getUniform('do_instancing');
-        }
+        fps=frameCount;
+        frameCount=0;
+        frames=0;
+        outFPS.set(fps);
+        updateText();
+        
+        fpsStartTime=Date.now();
     }
+   
+    if(opened)
+    {
+        var timeUsed=performance.now()-lastTime;
+        // if(timeUsed>30)console.log("peak ",performance.now()-lastTime);
+        queue.push(timeUsed);
+        queue.shift();
+    
+        queueChilds.push(childsTime);
+        queueChilds.shift();
 
-    uniDoInstancing.setValue(1);
-    mesh.render(shader);
-    uniDoInstancing.setValue(0);
+        updateCanvas();
+    }
+    
+    lastTime=performance.now();
+    selfTime=performance.now()-selfTimeStart;
+    var startTimeChilds=performance.now();
+
+    next.trigger();
+
+    childsTime=performance.now()-startTimeChilds;
+    
+};
 
 
-}
-
+op.onDelete=function()
+{
+  if(canvas)canvas.remove();
+  if(element)element.remove();
+};
 
 };
 
-Ops.Gl.MeshInstancer.prototype = new CABLES.Op();
+Ops.Gl.Performance.prototype = new CABLES.Op();
 
 //----------------
 
@@ -1247,283 +877,36 @@ Ops.Gl.MeshInstancer.prototype = new CABLES.Op();
 
 // **************************************************************
 // 
-// Ops.Gl.ShaderEffects.MeshPixelNoise
+// Ops.Gl.ClearColor
 // 
 // **************************************************************
 
-Ops.Gl.ShaderEffects.MeshPixelNoise = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-attachments["pixelnoise_frag"]="IN vec4 MOD_pos;\n\nfloat MOD_mod289(float x){return x - floor(x * (1.0 / 289.0)) * 289.0;}\nvec4 MOD_mod289(vec4 x){return x - floor(x * (1.0 / 289.0)) * 289.0;}\nvec4 MOD_perm(vec4 x){return MOD_mod289(((x * 34.0) + 1.0) * x);}\n\nfloat MOD_meshPixelNoise(vec3 p){\n    vec3 a = floor(p);\n    vec3 d = p - a;\n    d = d * d * (3.0 - 2.0 * d);\n\n    vec4 b = a.xxyy + vec4(0.0, 1.0, 0.0, 1.0);\n    vec4 k1 = MOD_perm(b.xyxy);\n    vec4 k2 = MOD_perm(k1.xyxy + b.zzww);\n\n    vec4 c = k2 + a.zzzz;\n    vec4 k3 = MOD_perm(c);\n    vec4 k4 = MOD_perm(c + 1.0);\n\n    vec4 o1 = fract(k3 * (1.0 / 41.0));\n    vec4 o2 = fract(k4 * (1.0 / 41.0));\n\n    vec4 o3 = o2 * d.z + o1 * (1.0 - d.z);\n    vec2 o4 = o3.yw * d.x + o3.xz * (1.0 - d.x);\n\n    return o4.y * d.y + o4.x * (1.0 - d.y);\n}\n";
-
-var cgl=op.patch.cgl;
-var id='mod'+Math.floor(Math.random()*10000);
-
-op.render=op.addInPort(new Port(this,"render",OP_PORT_TYPE_FUNCTION));
-op.trigger=op.addOutPort(new Port(this,"trigger",OP_PORT_TYPE_FUNCTION));
-
-var inScale=op.inValue("Scale",10);
-var inAmount=op.inValueSlider("Amount",0.3);
-var inWorldSpace=op.inValueBool("WorldSpace");
-
-
-var shader=null;
-
-var srcHeadVert=''
-    .endl()+'OUT vec4 MOD_pos;'
-    .endl();
-
-var srcBodyVert=''
-    .endl()+'#ifndef WORLDSPACE'
-    .endl()+'   MOD_pos=pos;'
-    .endl()+'#endif'
-    .endl()+'#ifdef WORLDSPACE'
-    .endl()+'   MOD_pos=pos*mMatrix;'
-    .endl()+'#endif'
-    .endl();
-
-var srcHeadFrag=attachments.pixelnoise_frag
-    .endl()+'UNI float MOD_scale;'
-    .endl()+'UNI float MOD_amount;'
-    .endl();
-
-var srcBodyFrag=''
-    .endl()+'   col.rgb -= MOD_meshPixelNoise(MOD_pos.xyz*MOD_scale)*MOD_amount/4.0;'
-
-    .endl();
-
-
-var moduleFrag=null;
-var moduleVert=null;
-
-inWorldSpace.onChange=updateWorldspace;
-function updateWorldspace()
-{
-    if(!shader)return;
-    if(inWorldSpace.get()) shader.define("WORLDSPACE");
-        else shader.removeDefine("WORLDSPACE");
-}
-
-
-function removeModule()
-{
-    if(shader && moduleFrag) shader.removeModule(moduleFrag);
-    if(shader && moduleVert) shader.removeModule(moduleVert);
-    shader=null;
-}
-
-op.render.onLinkChanged=removeModule;
-
-op.render.onTriggered=function()
-{
-    if(!cgl.getShader())
-    {
-         op.trigger.trigger();
-         return;
-    }
-
-    if(cgl.getShader()!=shader)
-    {
-        if(shader) removeModule();
-        shader=cgl.getShader();
-
-        moduleVert=shader.addModule(
-            {
-                title:op.objName,
-                name:'MODULE_VERTEX_POSITION',
-                srcHeadVert:srcHeadVert,
-                srcBodyVert:srcBodyVert
-            });
-
-        moduleFrag=shader.addModule(
-            {
-                title:op.objName,
-                name:'MODULE_COLOR',
-                srcHeadFrag:srcHeadFrag,
-                srcBodyFrag:srcBodyFrag
-            },moduleVert);
-
-        inScale.scale=new CGL.Uniform(shader,'f',moduleFrag.prefix+'scale',inScale);
-        inAmount.amount=new CGL.Uniform(shader,'f',moduleFrag.prefix+'amount',inAmount);
-        updateWorldspace();
-    }
-
-    if(!shader)return;
-
-    op.trigger.trigger();
-};
-
-
-};
-
-Ops.Gl.ShaderEffects.MeshPixelNoise.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.Matrix.Transform
-// 
-// **************************************************************
-
-Ops.Gl.Matrix.Transform = function()
+Ops.Gl.ClearColor = function()
 {
 Op.apply(this, arguments);
 var op=this;
 var attachments={};
 const render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
 const trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
+const r=op.addInPort(new Port(op,"r",OP_PORT_TYPE_VALUE,{ display:'range', colorPick:'true' }));
+const g=op.inValueSlider("g",0.1);
+const b=op.inValueSlider("b",0.1);
+const a=op.inValueSlider("a",1);
 
-
-const posX=op.addInPort(new Port(op,"posX"),0);
-const posY=op.addInPort(new Port(op,"posY"),0);
-const posZ=op.addInPort(new Port(op,"posZ"),0);
-
-const scale=op.addInPort(new Port(op,"scale"));
-
-const rotX=op.addInPort(new Port(op,"rotX"));
-const rotY=op.addInPort(new Port(op,"rotY"));
-const rotZ=op.addInPort(new Port(op,"rotZ"));
-
-op.setPortGroup([rotX,rotY,rotZ]);
-op.setPortGroup([posX,posY,posZ]);
-
-
-var cgl=op.patch.cgl;
-var vPos=vec3.create();
-var vScale=vec3.create();
-var transMatrix = mat4.create();
-mat4.identity(transMatrix);
-
-var doScale=false;
-var doTranslate=false;
-
-var translationChanged=true;
-var scaleChanged=true;
-var rotChanged=true;
-
-scale.setUiAttribs({"divider":true});
+r.set(0.1);
+const cgl=op.patch.cgl;
 
 render.onTriggered=function()
 {
-    var updateMatrix=false;
-    if(translationChanged)
-    {
-        updateTranslation();
-        updateMatrix=true;
-    }
-    if(scaleChanged)
-    {
-        updateScale();
-        updateMatrix=true;
-    }
-    if(rotChanged)
-    {
-        updateMatrix=true;
-    }
-    if(updateMatrix)doUpdateMatrix();
-
-    cgl.pushModelMatrix();
-    mat4.multiply(cgl.mMatrix,cgl.mMatrix,transMatrix);
-
+    cgl.gl.clearColor(r.get(),g.get(),b.get(),a.get());
+    cgl.gl.clear(cgl.gl.COLOR_BUFFER_BIT | cgl.gl.DEPTH_BUFFER_BIT);
     trigger.trigger();
-    cgl.popModelMatrix();
-    
-    if(CABLES.UI && gui.patch().isCurrentOp(op)) 
-        gui.setTransformGizmo(
-            {
-                posX:posX,
-                posY:posY,
-                posZ:posZ,
-            });
-
-    
 };
-
-op.transform3d=function()
-{
-    return {
-            pos:[posX,posY,posZ]
-        };
-    
-};
-
-var doUpdateMatrix=function()
-{
-    mat4.identity(transMatrix);
-    if(doTranslate)mat4.translate(transMatrix,transMatrix, vPos);
-
-    if(rotX.get()!==0)mat4.rotateX(transMatrix,transMatrix, rotX.get()*CGL.DEG2RAD);
-    if(rotY.get()!==0)mat4.rotateY(transMatrix,transMatrix, rotY.get()*CGL.DEG2RAD);
-    if(rotZ.get()!==0)mat4.rotateZ(transMatrix,transMatrix, rotZ.get()*CGL.DEG2RAD);
-
-    if(doScale)mat4.scale(transMatrix,transMatrix, vScale);
-    rotChanged=false;
-};
-
-function updateTranslation()
-{
-    doTranslate=false;
-    if(posX.get()!==0.0 || posY.get()!==0.0 || posZ.get()!==0.0) doTranslate=true;
-    vec3.set(vPos, posX.get(),posY.get(),posZ.get());
-    translationChanged=false;
-}
-
-function updateScale()
-{
-    doScale=false;
-    if(scale.get()!==0.0)doScale=true;
-    vec3.set(vScale, scale.get(),scale.get(),scale.get());
-    scaleChanged=false;
-}
-
-var translateChanged=function()
-{
-    translationChanged=true;
-};
-
-var scaleChanged=function()
-{
-    scaleChanged=true;
-};
-
-var rotChanged=function()
-{
-    rotChanged=true;
-};
-
-
-rotX.onChange=rotChanged;
-rotY.onChange=rotChanged;
-rotZ.onChange=rotChanged;
-
-scale.onChange=scaleChanged;
-
-posX.onChange=translateChanged;
-posY.onChange=translateChanged;
-posZ.onChange=translateChanged;
-
-rotX.set(0.0);
-rotY.set(0.0);
-rotZ.set(0.0);
-
-scale.set(1.0);
-
-posX.set(0.0);
-posY.set(0.0);
-posZ.set(0.0);
-
-doUpdateMatrix();
-
 
 
 };
 
-Ops.Gl.Matrix.Transform.prototype = new CABLES.Op();
+Ops.Gl.ClearColor.prototype = new CABLES.Op();
 
 //----------------
 
@@ -1531,95 +914,210 @@ Ops.Gl.Matrix.Transform.prototype = new CABLES.Op();
 
 // **************************************************************
 // 
-// Ops.Anim.Timer
+// Ops.Gl.Meshes.Cube
 // 
 // **************************************************************
 
-Ops.Anim.Timer = function()
+Ops.Gl.Meshes.Cube = function()
 {
 Op.apply(this, arguments);
 var op=this;
 var attachments={};
-var playPause=op.inValueBool("Play",true);
-var reset=op.inFunctionButton("Reset");
-var outTime=op.outValue("Time");
-var inSpeed=op.inValue("Speed",1);
+op.name='Cube';
 
-var timer=new CABLES.Timer();
+var render=op.inFunction('render');
+var width=op.inValue('width');
+var height=op.inValue('height');
+var lengt=op.inValue('length');
+var center=op.inValueBool('center');
 
-playPause.onChange=setState;
-setState();
+var active=op.inValueBool('Active',true);
 
-function setState()
+var trigger=op.outFunction('trigger');
+var geomOut=op.outObject("geometry");
+
+
+var cgl=op.patch.cgl;
+var geom=null;
+var mesh=null;
+width.set(1.0);
+height.set(1.0);
+lengt.set(1.0);
+center.set(true);
+
+render.onTriggered=function()
 {
-    if(playPause.get())
+    if(active.get() && mesh) mesh.render(cgl.getShader());
+    trigger.trigger();
+};
+
+op.preRender=function()
+{
+    buildMesh();
+    mesh.render(cgl.getShader());
+};
+
+
+function buildMesh()
+{
+    if(!geom)geom=new CGL.Geometry("cubemesh");
+    geom.clear();
+
+    var x=width.get();
+    var nx=-1*width.get();
+    var y=lengt.get();
+    var ny=-1*lengt.get();
+    var z=height.get();
+    var nz=-1*height.get();
+
+    if(!center.get())
     {
-        timer.play();
-        op.patch.addOnAnimFrame(op);
+        nx=0;
+        ny=0;
+        nz=0;
     }
     else
     {
-        timer.pause();
-        op.patch.removeOnAnimFrame(op);
+        x*=0.5;
+        nx*=0.5;
+        y*=0.5;
+        ny*=0.5;
+        z*=0.5;
+        nz*=0.5;
     }
+
+    geom.vertices = [
+        // Front face
+        nx, ny,  z,
+        x, ny,  z,
+        x,  y,  z,
+        nx,  y,  z,
+        // Back face
+        nx, ny, nz,
+        nx,  y, nz,
+        x,  y, nz,
+        x, ny, nz,
+        // Top face
+        nx,  y, nz,
+        nx,  y,  z,
+        x,  y,  z,
+        x,  y, nz,
+        // Bottom face
+        nx, ny, nz,
+        x, ny, nz,
+        x, ny,  z,
+        nx, ny,  z,
+        // Right face
+        x, ny, nz,
+        x,  y, nz,
+        x,  y,  z,
+        x, ny,  z,
+        // zeft face
+        nx, ny, nz,
+        nx, ny,  z,
+        nx,  y,  z,
+        nx,  y, nz
+        ];
+
+    geom.setTexCoords( [
+          // Front face
+          0.0, 1.0,
+          1.0, 1.0,
+          1.0, 0.0,
+          0.0, 0.0,
+          // Back face
+          1.0, 1.0,
+          1.0, 0.0,
+          0.0, 0.0,
+          0.0, 1.0,
+          // Top face
+          0.0, 0.0,
+          0.0, 1.0,
+          1.0, 1.0,
+          1.0, 0.0,
+          // Bottom face
+          1.0, 0.0,
+          0.0, 0.0,
+          0.0, 1.0,
+          1.0, 1.0,
+          // Right face
+          1.0, 1.0,
+          1.0, 0.0,
+          0.0, 0.0,
+          0.0, 1.0,
+          // Left face
+          0.0, 1.0,
+          1.0, 1.0,
+          1.0, 0.0,
+          0.0, 0.0,
+        ]);
+
+    geom.vertexNormals = [
+        // Front face
+         0.0,  0.0,  1.0,
+         0.0,  0.0,  1.0,
+         0.0,  0.0,  1.0,
+         0.0,  0.0,  1.0,
+
+        // Back face
+         0.0,  0.0, -1.0,
+         0.0,  0.0, -1.0,
+         0.0,  0.0, -1.0,
+         0.0,  0.0, -1.0,
+
+        // Top face
+         0.0,  1.0,  0.0,
+         0.0,  1.0,  0.0,
+         0.0,  1.0,  0.0,
+         0.0,  1.0,  0.0,
+
+        // Bottom face
+         0.0, -1.0,  0.0,
+         0.0, -1.0,  0.0,
+         0.0, -1.0,  0.0,
+         0.0, -1.0,  0.0,
+
+        // Right face
+         1.0,  0.0,  0.0,
+         1.0,  0.0,  0.0,
+         1.0,  0.0,  0.0,
+         1.0,  0.0,  0.0,
+
+        // Left face
+        -1.0,  0.0,  0.0,
+        -1.0,  0.0,  0.0,
+        -1.0,  0.0,  0.0,
+        -1.0,  0.0,  0.0
+    ];
+
+
+    geom.verticesIndices = [
+        0, 1, 2,      0, 2, 3,    // Front face
+        4, 5, 6,      4, 6, 7,    // Back face
+        8, 9, 10,     8, 10, 11,  // Top face
+        12, 13, 14,   12, 14, 15, // Bottom face
+        16, 17, 18,   16, 18, 19, // Right face
+        20, 21, 22,   20, 22, 23  // Left face
+    ];
+
+    mesh=new CGL.Mesh(cgl,geom);
+    geomOut.set(null);
+    geomOut.set(geom);
+
 }
 
-reset.onTriggered=function()
-{
-    timer.setTime(0);
-    outTime.set(0);
-};
+width.onValueChanged=buildMesh;
+height.onValueChanged=buildMesh;
+lengt.onValueChanged=buildMesh;
+center.onValueChanged=buildMesh;
 
-op.onAnimFrame=function()
-{
-    timer.update();
-    outTime.set(timer.get()*inSpeed.get());
+
+
+buildMesh();
 
 };
 
-
-};
-
-Ops.Anim.Timer.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Anim.SineAnim
-// 
-// **************************************************************
-
-Ops.Anim.SineAnim = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-var exe=op.addInPort(new Port(op,"exe",OP_PORT_TYPE_FUNCTION));
-var result=op.addOutPort(new Port(op,"result"));
-
-var phase=op.addInPort(new Port(op,"phase",OP_PORT_TYPE_VALUE));
-var mul=op.addInPort(new Port(op,"frequency",OP_PORT_TYPE_VALUE));
-var amplitude=op.addInPort(new Port(op,"amplitude",OP_PORT_TYPE_VALUE));
-
-mul.set(1.0);
-amplitude.set(1.0);
-phase.set(1);
-exe.onTriggered=exec;
-exec();
-
-function exec()
-{
-    result.set( amplitude.get() * Math.sin( (op.patch.freeTimer.get()*mul.get()) + phase.get() ));
-}
-
-
-
-};
-
-Ops.Anim.SineAnim.prototype = new CABLES.Op();
+Ops.Gl.Meshes.Cube.prototype = new CABLES.Op();
 
 //----------------
 
@@ -1883,176 +1381,1162 @@ Ops.Exp.Gl.MatCapMaterialNew.prototype = new CABLES.Op();
 
 // **************************************************************
 // 
-// Ops.Gl.Texture
+// Ops.Array.ParseArray
 // 
 // **************************************************************
 
-Ops.Gl.Texture = function()
+Ops.Array.ParseArray = function()
 {
 Op.apply(this, arguments);
 var op=this;
 var attachments={};
-var filename=op.addInPort(new Port(op,"file",OP_PORT_TYPE_VALUE,{ display:'file',type:'string',filter:'image' } ));
-var tfilter=op.inValueSelect("filter",['nearest','linear','mipmap']);
-var wrap=op.inValueSelect("wrap",['repeat','mirrored repeat','clamp to edge'],"clamp to edge");
-var flip=op.addInPort(new Port(op,"flip",OP_PORT_TYPE_VALUE,{display:'bool'}));
-var unpackAlpha=op.addInPort(new Port(op,"unpackPreMultipliedAlpha",OP_PORT_TYPE_VALUE,{display:'bool'}));
+var text=op.addInPort(new Port(op,"text",OP_PORT_TYPE_VALUE,{type:'string',display:'editor'}));
+var separator=op.inValueString("separator",",");
 
+var toNumber=op.inValueBool("Numbers",false);
 
-var textureOut=op.outTexture("texture");
-var width=op.addOutPort(new Port(op,"width",OP_PORT_TYPE_VALUE));
-var height=op.addOutPort(new Port(op,"height",OP_PORT_TYPE_VALUE));
-var loading=op.addOutPort(new Port(op,"loading",OP_PORT_TYPE_VALUE));
-var ratio=op.outValue("Aspect Ratio");
+var parsed=op.outFunction("Parsed");
+var arr=op.addOutPort(new Port(op,"array",OP_PORT_TYPE_ARRAY));
+var len=op.addOutPort(new Port(op,"length",OP_PORT_TYPE_VALUE));
 
-flip.set(false);
-unpackAlpha.set(false);
-unpackAlpha.hidePort();
+separator.set(',');
+text.set('1,2,3');
 
-var cgl=op.patch.cgl;
-var cgl_filter=0;
-var cgl_wrap=0;
+text.onValueChanged=parse;
+separator.onValueChanged=parse;
+toNumber.onChange=parse;
 
-flip.onChange=function(){reload();};
-filename.onChange=reload;
+parse();
 
-tfilter.onChange=onFilterChange;
-wrap.onChange=onWrapChange;
-unpackAlpha.onChange=function(){ reload(); };
-
-var timedLoader=0;
-
-var setTempTexture=function()
+function parse()
 {
-    var t=CGL.Texture.getTempTexture(cgl);
-    textureOut.set(t);
-};
+    if(!text.get())return;
+    
+    var r=text.get().split(separator.get());
+    len.set(r.length);
 
-var loadingId=null;
-
-function reload(nocache)
-{
-    if(!loadingId)loadingId=cgl.patch.loading.start('texture',filename.get());
-    clearTimeout(timedLoader);
-    timedLoader=setTimeout(function()
+    if(toNumber.get())
     {
-        realReload(nocache);
-    },30);
+        for(var i=0;i<r.length;i++)
+        {
+            r[i]=Number(r[i]);
+        }
+    }
+    
+    arr.set(null);
+    arr.set(r);
+    parsed.trigger();
 }
 
-function realReload(nocache)
+
+};
+
+Ops.Array.ParseArray.prototype = new CABLES.Op();
+
+//----------------
+
+
+
+// **************************************************************
+// 
+// Ops.Gl.Matrix.Transform
+// 
+// **************************************************************
+
+Ops.Gl.Matrix.Transform = function()
 {
-    if(!loadingId)loadingId=cgl.patch.loading.start('texture',filename.get());
-    
-    var url=op.patch.getFilePath(String(filename.get()));
-    if(nocache)url+='?rnd='+CABLES.generateUUID();
+Op.apply(this, arguments);
+var op=this;
+var attachments={};
+const render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
+const trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
 
-    if((filename.get() && filename.get().length>1))
+
+const posX=op.addInPort(new Port(op,"posX"),0);
+const posY=op.addInPort(new Port(op,"posY"),0);
+const posZ=op.addInPort(new Port(op,"posZ"),0);
+
+const scale=op.addInPort(new Port(op,"scale"));
+
+const rotX=op.addInPort(new Port(op,"rotX"));
+const rotY=op.addInPort(new Port(op,"rotY"));
+const rotZ=op.addInPort(new Port(op,"rotZ"));
+
+op.setPortGroup([rotX,rotY,rotZ]);
+op.setPortGroup([posX,posY,posZ]);
+
+
+var cgl=op.patch.cgl;
+var vPos=vec3.create();
+var vScale=vec3.create();
+var transMatrix = mat4.create();
+mat4.identity(transMatrix);
+
+var doScale=false;
+var doTranslate=false;
+
+var translationChanged=true;
+var scaleChanged=true;
+var rotChanged=true;
+
+scale.setUiAttribs({"divider":true});
+
+render.onTriggered=function()
+{
+    var updateMatrix=false;
+    if(translationChanged)
     {
-        loading.set(true);
+        updateTranslation();
+        updateMatrix=true;
+    }
+    if(scaleChanged)
+    {
+        updateScale();
+        updateMatrix=true;
+    }
+    if(rotChanged)
+    {
+        updateMatrix=true;
+    }
+    if(updateMatrix)doUpdateMatrix();
 
-        var tex=CGL.Texture.load(cgl,url,
-            function(err)
+    cgl.pushModelMatrix();
+    mat4.multiply(cgl.mMatrix,cgl.mMatrix,transMatrix);
+
+    trigger.trigger();
+    cgl.popModelMatrix();
+    
+    if(CABLES.UI && gui.patch().isCurrentOp(op)) 
+        gui.setTransformGizmo(
             {
-                // console.log('tex loaded!!');
-
-                if(err)
-                {
-                    setTempTexture();
-                    op.uiAttr({'error':'could not load texture "'+filename.get()+'"'});
-                    cgl.patch.loading.finished(loadingId);
-                    return;
-                }
-                else op.uiAttr({'error':null});
-                textureOut.set(tex);
-                width.set(tex.width);
-                height.set(tex.height);
-                ratio.set(tex.width/tex.height);
-
-                if(!tex.isPowerOfTwo()) op.uiAttr(
-                    {
-                        hint:'texture dimensions not power of two! - texture filtering will not work.',
-                        warning:null
-                    });
-                    else op.uiAttr(
-                        {
-                            hint:null,
-                            warning:null
-                        });
-
-                textureOut.set(null);
-                textureOut.set(tex);
-                cgl.patch.loading.finished(loadingId);
-                
-                // tex.printInfo();
-
-            },{
-                wrap:cgl_wrap,
-                flip:flip.get(),
-                unpackAlpha:unpackAlpha.get(),
-                filter:cgl_filter
+                posX:posX,
+                posY:posY,
+                posZ:posZ,
             });
 
-        textureOut.set(null);
-        textureOut.set(tex);
+    
+};
 
-        if(!textureOut.get() && nocache)
-        {
-        }
-        loading.set(false);
-        cgl.patch.loading.finished(loadingId);
+op.transform3d=function()
+{
+    return {
+            pos:[posX,posY,posZ]
+        };
+    
+};
+
+var doUpdateMatrix=function()
+{
+    mat4.identity(transMatrix);
+    if(doTranslate)mat4.translate(transMatrix,transMatrix, vPos);
+
+    if(rotX.get()!==0)mat4.rotateX(transMatrix,transMatrix, rotX.get()*CGL.DEG2RAD);
+    if(rotY.get()!==0)mat4.rotateY(transMatrix,transMatrix, rotY.get()*CGL.DEG2RAD);
+    if(rotZ.get()!==0)mat4.rotateZ(transMatrix,transMatrix, rotZ.get()*CGL.DEG2RAD);
+
+    if(doScale)mat4.scale(transMatrix,transMatrix, vScale);
+    rotChanged=false;
+};
+
+function updateTranslation()
+{
+    doTranslate=false;
+    if(posX.get()!==0.0 || posY.get()!==0.0 || posZ.get()!==0.0) doTranslate=true;
+    vec3.set(vPos, posX.get(),posY.get(),posZ.get());
+    translationChanged=false;
+}
+
+function updateScale()
+{
+    doScale=false;
+    if(scale.get()!==0.0)doScale=true;
+    vec3.set(vScale, scale.get(),scale.get(),scale.get());
+    scaleChanged=false;
+}
+
+var translateChanged=function()
+{
+    translationChanged=true;
+};
+
+var scaleChanged=function()
+{
+    scaleChanged=true;
+};
+
+var rotChanged=function()
+{
+    rotChanged=true;
+};
+
+
+rotX.onChange=rotChanged;
+rotY.onChange=rotChanged;
+rotZ.onChange=rotChanged;
+
+scale.onChange=scaleChanged;
+
+posX.onChange=translateChanged;
+posY.onChange=translateChanged;
+posZ.onChange=translateChanged;
+
+rotX.set(0.0);
+rotY.set(0.0);
+rotZ.set(0.0);
+
+scale.set(1.0);
+
+posX.set(0.0);
+posY.set(0.0);
+posZ.set(0.0);
+
+doUpdateMatrix();
+
+
+
+};
+
+Ops.Gl.Matrix.Transform.prototype = new CABLES.Op();
+
+//----------------
+
+
+
+// **************************************************************
+// 
+// Ops.Gl.ShaderEffects.SplineRepeatInstanced
+// 
+// **************************************************************
+
+Ops.Gl.ShaderEffects.SplineRepeatInstanced = function()
+{
+Op.apply(this, arguments);
+var op=this;
+var attachments={};
+attachments["splinerepeat_body_vert"]="float off=(MOD_index)+MOD_offset;\n\n#ifdef METHOD_FILL\noff=mod(off,float(PATHFOLLOW_POINTS));\n#endif\n\nfloat fr=off-floor(off);\nint index=int(floor(off));\nint index2=index+1;\nfloat posOnSpline=(float(index)+fr)/float(PATHFOLLOW_POINTS);\n\nmat4 newMatrix=mat4(1.0);\nnewMatrix[0][0]=MOD_scale;\nnewMatrix[1][1]=MOD_scale;\nnewMatrix[2][2]=MOD_scale;\nnewMatrix[3][3]=1.0;\n\nvec3 mPos;\n\n\nfloat mulRotPre=0.0;\n#ifdef TEX_ROT\n    // float scc=texture2D( MOD_texScale, vec2(posOnSpline,0.5) ).r;\n    mulRotPre=texture2D( MOD_texRot, vec2(posOnSpline,0.5) ).r*116.28;\n    \n#endif\n\nmat4 rotma=mat4(1.0);\nrotma=rotma*rotationMatrix(vec3(1.0,0.0,0.0),MOD_preRotX+mulRotPre);\nrotma=rotma*rotationMatrix(vec3(0.0,1.0,0.0),MOD_preRotY+mulRotPre);\nrotma=rotma*rotationMatrix(vec3(0.0,0.0,1.0),MOD_preRotZ+mulRotPre);\n// rotma[3][3]=1.0;\n\n\nif(index2!=0 && index>-1 && index2<PATHFOLLOW_POINTS)\n{\n    mPos=mix(MOD_points[index], MOD_points[index2] ,fr);\n}\nelse\n{\n    newMatrix[0][0]=0.0;\n    newMatrix[1][1]=0.0;\n    newMatrix[2][2]=0.0;\n    newMatrix[3][3]=1.0;\n}\n\nnewMatrix[3][0]+=mPos.x;\nnewMatrix[3][1]+=mPos.y;\nnewMatrix[3][2]+=mPos.z;\nnewMatrix[3][3]=1.0;\n\n#ifdef TEX_SCALE\n    float scc=texture2D( MOD_texScale, vec2(posOnSpline,0.5) ).r;\n    \n    newMatrix[0][0]*=scc;\n    newMatrix[1][1]*=scc;\n    newMatrix[2][2]*=scc;\n#endif\n\n#ifndef ROT_BYPOSITION\n    posOnSpline=1.0;\n#endif\n\nmat4 rotm=mat4(1.0);\nrotm=rotm*rotationMatrix(vec3(1.0,0.0,0.0),(posOnSpline)*MOD_rotX);\nrotm=rotm*rotationMatrix(vec3(0.0,1.0,0.0),(posOnSpline)*MOD_rotY);\nrotm=rotm*rotationMatrix(vec3(0.0,0.0,1.0),(posOnSpline)*MOD_rotZ);\n\n\nnewMatrix*=rotma;\nmMatrix*=newMatrix;\nmMatrix*=rotm;\n\n";
+attachments["splinerepeat_head_vert"]="UNI float do_instancing;\nUNI float MOD_scale;\n\nUNI float MOD_offset;\nUNI float MOD_spacing;\nUNI float MOD_numInstances;\nUNI vec3 MOD_points[PATHFOLLOW_POINTS];\n\nUNI float MOD_rotX;\nUNI float MOD_rotY;\nUNI float MOD_rotZ;\n\nUNI float MOD_preRotX;\nUNI float MOD_preRotY;\nUNI float MOD_preRotZ;\n\n\nIN float MOD_index;\n\n#ifdef TEX_ROT\n    UNI sampler2D MOD_texRot;\n#endif\n\n#ifdef TEX_SCALE\n    UNI sampler2D MOD_texScale;\n#endif\n\n\n\nmat4 rotationMatrix(vec3 axis, float angle)\n{\n    axis = normalize(axis);\n    float s = sin(angle);\n    float c = cos(angle);\n    float oc = 1.0 - c;\n    \n    return mat4(oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,  0.0,\n                oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,  0.0,\n                oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c,           0.0,\n                0.0,                                0.0,                                0.0,                                1.0);\n}\n";
+// TODO: remove array3xtransformedinstanced....
+
+var exe=op.addInPort(new Port(op,"exe",OP_PORT_TYPE_FUNCTION));
+
+var inTransformations=op.inArray("positions");
+var geom=op.inObject("geom");
+
+var inNum=op.inValueInt("Num",2000);
+
+var inOffset=op.inValue("Offset");
+
+var rotPos=op.inValueBool("Rotate by Position",true);
+
+var inMeth=op.inValueSelect("Method",["Array","Fill"],"Array");
+var inSpacing=op.inValue("Spacing",0.2);
+var inScale=op.inValue("Scale",1);
+// var inRot=op.inValue("Rotation",0);
+var inRotX=op.inValue("Rot X",0);
+var inRotY=op.inValue("Rot Y",0);
+var inRotZ=op.inValue("Rot Z",1);
+
+var inPreRotX=op.inValue("Pre Rot X",0);
+var inPreRotY=op.inValue("Pre Rot Y",0);
+var inPreRotZ=op.inValue("Pre Rot Z",1);
+
+var texScaling=op.inTexture("Texture Scaling");
+var texRotation=op.inTexture("Texture Rotation");
+
+
+geom.ignoreValueSerialize=true;
+
+var mod=null;
+var mesh=null;
+var shader=null;
+var uniDoInstancing=null;
+var uniPoints=null;
+var recalc=true;
+var cgl=op.patch.cgl;
+var numSplinePoints=0;
+
+exe.onTriggered=doRender;
+// exe.onLinkChanged=removeModule;
+
+
+// var matrixArray= new Float32Array(1);
+var m=mat4.create();
+inSpacing.onChange=inTransformations.onChange=reset;
+
+inNum.onChange=reset;
+inMeth.onChange=updateMethod;
+texScaling.onChange=updateTextureDefine;
+rotPos.onChange=updateTextureDefine;
+
+function updateMethod()
+{
+    if(inMeth.get()=='Fill')
+    {
+        inSpacing.setUiAttribs({hidePort:true,greyout:true});
     }
     else
     {
-        cgl.patch.loading.finished(loadingId);
-        setTempTexture();
+        inSpacing.setUiAttribs({hidePort:false,greyout:false});
     }
+    recalc=true;
 }
 
-
-function onFilterChange()
+function updateTextureDefine()
 {
-    if(tfilter.get()=='nearest') cgl_filter=CGL.Texture.FILTER_NEAREST;
-    if(tfilter.get()=='linear') cgl_filter=CGL.Texture.FILTER_LINEAR;
-    if(tfilter.get()=='mipmap') cgl_filter=CGL.Texture.FILTER_MIPMAP;
+    if(!shader)return;
+    if(texScaling.get())shader.define("TEX_SCALE");
+        else shader.removeDefine("TEX_SCALE");
 
-    reload();
+    if(texRotation.get())shader.define("TEX_ROT");
+        else shader.removeDefine("TEX_ROT");
+
+    if(rotPos.get()) shader.define("ROT_BYPOSITION");
+        else shader.define("ROT_BYPOSITION");
 }
 
-function onWrapChange()
+geom.onChange=function()
 {
-    if(wrap.get()=='repeat') cgl_wrap=CGL.Texture.WRAP_REPEAT;
-    if(wrap.get()=='mirrored repeat') cgl_wrap=CGL.Texture.WRAP_MIRRORED_REPEAT;
-    if(wrap.get()=='clamp to edge') cgl_wrap=CGL.Texture.WRAP_CLAMP_TO_EDGE;
-
-    reload();
-}
-
-op.onFileUploaded=function(fn)
-{
-    if(filename.get() && filename.get().indexOf(fn)>-1)
+    if(!geom.get())
     {
-        textureOut.set(null);
-        textureOut.set(CGL.Texture.getTempTexture(cgl));
-
-        realReload(true);
+        mesh=null;
+        return;
     }
+    mesh=new CGL.Mesh(cgl,geom.get());
+    reset();
+};
+
+function removeModule()
+{
+    if(shader && mod)
+    {
+        shader.removeDefine('INSTANCING');
+        shader.removeModule(mod);
+        shader=null;
+    }
+    reset();
+}
+
+function reset()
+{
+    recalc=true;
+}
+
+function setupArray()
+{
+    if(!inTransformations.get())return;
+    if(!mesh)return;
+    if(!shader)return;
+    if(!uniPoints)return;
+    
+    var pointArray=inTransformations.get();
+    var num=inNum.get();
+    if(num<=0)return;
+    numSplinePoints=Math.floor(pointArray.length/3);
+    
+    // console.log("numSplinePoints",numSplinePoints);
+
+    // spline...
+    // if(shader.getDefine("PATHFOLLOW_POINTS")<Math.floor(pointArray.length/3))
+    shader.define('PATHFOLLOW_POINTS',Math.floor(numSplinePoints));
+
+    uniPoints.setValue(new Float32Array(pointArray));
+
+    // delta attr per mesh
+    var indexArr=new Float32Array(num);
+    
+    var space=inSpacing.get();
+    if(inMeth.get()=="Fill")
+    {
+        space=numSplinePoints/num;
+        // console.log(space);
+        shader.define("METHOD_FILL");
+    }
+    else shader.removeDefine("METHOD_FILL");
+
+    for(var i=0;i<num;i++) indexArr[i]=i*space;
+    
+    mesh.addAttribute(mod.prefix+'index',indexArr,1,{instanced:true});
+    mesh.numInstances=num;
+
+    updateTextureDefine();
+
+    // console.log("SETUP FINISHED",indexArr.length);
+    // mesh.addAttribute('instMat',matrixArray,16);
+
+    recalc=false;
+}
+
+function doRender()
+{
+    // if(matrixArray.length<=1)return;
+    if(!mesh) return;
+    // if(recalc)setupArray();
+
+    if(cgl.getShader() && cgl.getShader()!=shader)
+    {
+        if(shader && mod)
+        {
+            removeModule();
+        }
+
+        shader=cgl.getShader();
+        if(!shader.hasDefine('INSTANCING'))
+        {
+            mod=shader.addModule(
+                {
+                    name: 'MODULE_VERTEX_POSITION',
+                    priority:-2,
+                    srcHeadVert: attachments.splinerepeat_head_vert||'',
+                    srcBodyVert: attachments.splinerepeat_body_vert||''
+                });
+
+            shader.define('INSTANCING');
+            uniDoInstancing=new CGL.Uniform(shader,'f','do_instancing',0);
+            inScale.uniform=new CGL.Uniform(shader,'f',mod.prefix+'scale',inScale);
+
+            // op.uniRot=new CGL.Uniform(shader,'f',mod.prefix+'rotation',inRot);
+            op.uniOffset=new CGL.Uniform(shader,'f',mod.prefix+'offset',inOffset);
+            op.uniSpacing=new CGL.Uniform(shader,'f',mod.prefix+'spacing',inSpacing);
+            op.numInstances=new CGL.Uniform(shader,'f',mod.prefix+'numInstances',inNum);
+
+            uniPoints=new CGL.Uniform(shader,'3f[]',mod.prefix+'points',new Float32Array([0,0,0,0,0,0]));
+            op.uniTextureFrag=new CGL.Uniform(shader,'t',mod.prefix+'texScale',6);
+            op.uniTextureFragRot=new CGL.Uniform(shader,'t',mod.prefix+'texRot',7);
+
+            op.uniRotX=new CGL.Uniform(shader,'f',mod.prefix+'rotX',inRotX);
+            op.uniRotY=new CGL.Uniform(shader,'f',mod.prefix+'rotY',inRotY);
+            op.uniRotZ=new CGL.Uniform(shader,'f',mod.prefix+'rotZ',inRotZ);
+            
+            op.uniPreRotX=new CGL.Uniform(shader,'f',mod.prefix+'preRotX',inPreRotX);
+            op.uniPreRotY=new CGL.Uniform(shader,'f',mod.prefix+'preRotY',inPreRotY);
+            op.uniPreRotZ=new CGL.Uniform(shader,'f',mod.prefix+'preRotZ',inPreRotZ);
+            
+            if(numSplinePoints) shader.define('PATHFOLLOW_POINTS',Math.floor(numSplinePoints));
+                else shader.define('PATHFOLLOW_POINTS',10);
+        }
+        else
+        {
+            uniDoInstancing=shader.getUniform('do_instancing');
+        }
+    }
+
+    if(recalc)setupArray();
+
+
+    if(texScaling.get())
+    {
+        cgl.gl.activeTexture(cgl.gl.TEXTURE6);
+        cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, texScaling.get().tex);
+    }
+
+    if(texRotation.get())
+    {
+        cgl.gl.activeTexture(cgl.gl.TEXTURE7);
+        cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, texRotation.get().tex);
+    }
+
+    if(!recalc && numSplinePoints)
+    {
+        uniDoInstancing.setValue(1);
+        mesh.render(shader);
+        uniDoInstancing.setValue(0);
+    }
+
+}
+
+
+};
+
+Ops.Gl.ShaderEffects.SplineRepeatInstanced.prototype = new CABLES.Op();
+
+//----------------
+
+
+
+// **************************************************************
+// 
+// Ops.Sidebar.Sidebar
+// 
+// **************************************************************
+
+Ops.Sidebar.Sidebar = function()
+{
+Op.apply(this, arguments);
+var op=this;
+var attachments={};
+attachments["style_css"]="/*\n * SIDEBAR\n */\n\n.icon-chevron-down {\n\t\n    top: 2px;\n    right: 9px;\n}\n\n.icon-chevron-up {\n\tbackground-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM4ODg4ODgiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBjbGFzcz0iZmVhdGhlciBmZWF0aGVyLWNoZXZyb24tdXAiPjxwb2x5bGluZSBwb2ludHM9IjE4IDE1IDEyIDkgNiAxNSI+PC9wb2x5bGluZT48L3N2Zz4=);\n    top: 2px;\n    right: 9px;\n}\n.icon-refresh {\n    background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJmZWF0aGVyIGZlYXRoZXItcmVmcmVzaC1jdyI+PHBvbHlsaW5lIHBvaW50cz0iMjMgNCAyMyAxMCAxNyAxMCI+PC9wb2x5bGluZT48cG9seWxpbmUgcG9pbnRzPSIxIDIwIDEgMTQgNyAxNCI+PC9wb2x5bGluZT48cGF0aCBkPSJNMy41MSA5YTkgOSAwIDAgMSAxNC44NS0zLjM2TDIzIDEwTTEgMTRsNC42NCA0LjM2QTkgOSAwIDAgMCAyMC40OSAxNSI+PC9wYXRoPjwvc3ZnPg==);\n    height: 100%;\n}\n.icon-back {\n    background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJmZWF0aGVyIGZlYXRoZXItcm90YXRlLWNjdyI+PHBvbHlsaW5lIHBvaW50cz0iMSA0IDEgMTAgNyAxMCI+PC9wb2x5bGluZT48cGF0aCBkPSJNMy41MSAxNWE5IDkgMCAxIDAgMi4xMy05LjM2TDEgMTAiPjwvcGF0aD48L3N2Zz4=);\n    height: 100%;\n}\n\n.sidebar-cables {\n  position: absolute;\n  top: 0;\n  left: 0;\n  z-index: 100000;\n  color: #BBBBBB;\n  width: 220px;\n  max-height: 100%;\n  box-sizing: border-box;\n  overflow-y: auto;\n  overflow-x: hidden;\n  /* overflow-y: overlay; */\n  /* max-height: 1000px; */\n  /* ransition: max-height 0.5s; */\n  font-size: 13px;\n  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Helvetica, \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", SimSun, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\";\n  line-height: 1em; /* prevent emojis from breaking height of the title */\n  --sidebar-border-radius: 4px;\n  --sidebar-monospace-font-stack: \"SFMono-Regular\", Consolas, \"Liberation Mono\", Menlo, Courier, monospace;\n  --sidebar-hover-transition-time: .2s;\n}\n\n.sidebar-cables::selection {\n    background-color: #24baa7;\n    color: #EEEEEE;\n}\n\n.sidebar-cables::-webkit-scrollbar {\n    background-color: transparent;\n    --cables-scrollbar-width: 8px;\n    width: var(--cables-scrollbar-width);\n}\n\n.sidebar-cables::-webkit-scrollbar-track {\n    background-color: transparent;\n    width: var(--cables-scrollbar-width);\n}\n\n.sidebar-cables::-webkit-scrollbar-thumb {\n    background-color: #333333;\n    border-radius: 4px;\n    width: var(--cables-scrollbar-width);\n}\n\n.sidebar-cables--closed {\n  width: auto;\n}\n\n.sidebar__close-button {\n  background-color: #1A1A1A;\n  -webkit-user-select: none;  /* Chrome all / Safari all */\n  -moz-user-select: none;     /* Firefox all */\n  -ms-user-select: none;      /* IE 10+ */\n  user-select: none;          /* Likely future */ \n  transition: background-color var(--sidebar-hover-transition-time);\n  color: #CCCCCC;\n  height: 22px;\n  box-sizing: border-box;\n  padding-top: 2px;\n  text-align: center;\n  cursor: pointer;\n  border-top: 1px solid #272727;\n  border-radius: 0 0 var(--sidebar-border-radius) var(--sidebar-border-radius);\n  opacity: 1.0;\n  transition: opacity 0.3s;\n  overflow: hidden;\n}\n\n.sidebar__close-button-icon {\n    display: inline-block;\n    width: 21px;\n    height: 20px;\n    position: relative;\n    top: -1px;\n    background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM4ODg4ODgiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBjbGFzcz0iZmVhdGhlciBmZWF0aGVyLWNoZXZyb24tdXAiPjxwb2x5bGluZSBwb2ludHM9IjE4IDE1IDEyIDkgNiAxNSI+PC9wb2x5bGluZT48L3N2Zz4=);\n    background-size: cover;\n    background-repeat: no-repeat;\n    background-repeat: no-repeat;\n    background-position: 0 -1px;\n}\n\n.sidebar--closed .sidebar__close-button {\n    margin-top: 8px;\n    margin-left: 8px;\n    padding-top: 13px;\n    padding-left: 11px;\n    padding-right: 11px;\n    width: 46px;\n    height: 46px;\n    border-radius: 50%;\n    cursor: pointer;\n    opacity: 0.3;\n}\n\n.sidebar--closed .sidebar__close-button-icon {\n    background-image: url(data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48c3ZnIHdpZHRoPSIyMnB4IiBoZWlnaHQ9IjE3cHgiIHZpZXdCb3g9IjAgMCAyMiAxNyIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj4gICAgICAgIDx0aXRsZT5Hcm91cCAzPC90aXRsZT4gICAgPGRlc2M+Q3JlYXRlZCB3aXRoIFNrZXRjaC48L2Rlc2M+ICAgIDxkZWZzPjwvZGVmcz4gICAgPGcgaWQ9IkNhbnZhcy1TaWRlYmFyIiBzdHJva2U9Im5vbmUiIHN0cm9rZS13aWR0aD0iMSIgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIj4gICAgICAgIDxnIGlkPSJEZXNrdG9wLWdyZWVuLWJsdWlzaC1Db3B5LTkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMC4wMDAwMDAsIC0yMi4wMDAwMDApIj4gICAgICAgICAgICA8ZyBpZD0iR3JvdXAtMyIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMjAuMDAwMDAwLCAyMi4wMDAwMDApIj4gICAgICAgICAgICAgICAgPHBhdGggZD0iTTAuNSwyLjUgTDIuNSwyLjUiIGlkPSJMaW5lLTIiIHN0cm9rZT0iIzk3OTc5NyIgc3Ryb2tlLWxpbmVjYXA9InNxdWFyZSI+PC9wYXRoPiAgICAgICAgICAgICAgICA8cGF0aCBkPSJNMTAuNSwyLjUgTDIxLjUsMi41IiBpZD0iTGluZS0yIiBzdHJva2U9IiM5Nzk3OTciIHN0cm9rZS1saW5lY2FwPSJzcXVhcmUiPjwvcGF0aD4gICAgICAgICAgICAgICAgPHBhdGggZD0iTTAuNSw4LjUgTDExLjUsOC41IiBpZD0iTGluZS0yIiBzdHJva2U9IiM5Nzk3OTciIHN0cm9rZS1saW5lY2FwPSJzcXVhcmUiPjwvcGF0aD4gICAgICAgICAgICAgICAgPHBhdGggZD0iTTE5LjUsOC41IEwyMS41LDguNSIgaWQ9IkxpbmUtMiIgc3Ryb2tlPSIjOTc5Nzk3IiBzdHJva2UtbGluZWNhcD0ic3F1YXJlIj48L3BhdGg+ICAgICAgICAgICAgICAgIDxwYXRoIGQ9Ik0wLjUsMTQuNSBMNS41LDE0LjUiIGlkPSJMaW5lLTIiIHN0cm9rZT0iIzk3OTc5NyIgc3Ryb2tlLWxpbmVjYXA9InNxdWFyZSI+PC9wYXRoPiAgICAgICAgICAgICAgICA8cGF0aCBkPSJNMTMuNSwxNC41IEwyMS41LDE0LjUiIGlkPSJMaW5lLTIiIHN0cm9rZT0iIzk3OTc5NyIgc3Ryb2tlLWxpbmVjYXA9InNxdWFyZSI+PC9wYXRoPiAgICAgICAgICAgICAgICA8Y2lyY2xlIGlkPSJPdmFsLTMiIGZpbGw9IiM5Nzk3OTciIGN4PSI2LjUiIGN5PSIyLjUiIHI9IjIuNSI+PC9jaXJjbGU+ICAgICAgICAgICAgICAgIDxjaXJjbGUgaWQ9Ik92YWwtMyIgZmlsbD0iIzk3OTc5NyIgY3g9IjE1LjUiIGN5PSI4LjUiIHI9IjIuNSI+PC9jaXJjbGU+ICAgICAgICAgICAgICAgIDxjaXJjbGUgaWQ9Ik92YWwtMyIgZmlsbD0iIzk3OTc5NyIgY3g9IjkuNSIgY3k9IjE0LjUiIHI9IjIuNSI+PC9jaXJjbGU+ICAgICAgICAgICAgPC9nPiAgICAgICAgPC9nPiAgICA8L2c+PC9zdmc+);\n    background-position: 0px 0px;\n}\n\n.sidebar__close-button:hover {\n  background-color: #111111;\n  opacity: 1.0 !important;\n}\n\n/*\n * SIDEBAR ITEMS\n */\n\n.sidebar__items {\n  /* max-height: 1000px; */\n  /* transition: max-height 0.5;*/ \n}\n\n.sidebar--closed .sidebar__items {\n  /* max-height: 0; */\n  height: 0;\n  display: none;\n  pointer-interactions: none;\n}\n\n/*\n * SIDEBAR GROUP\n */\n\n.sidebar__group {\n  background-color: #1A1A1A;\n  overflow: hidden;\n  box-sizing: border-box;\n  animate: height;\n  /* max-height: 1000px; */\n  /* transition: max-height 0.5s; */\n  --sidebar-group-header-height: 28px;\n}\n\n.sidebar__group--closed {\n  /* max-height: 13px; */\n  height: var(--sidebar-group-header-height);\n}\n\n.sidebar__group-header {\n  box-sizing: border-box;\n  color: #EEEEEE;\n  -webkit-user-select: none;  /* Chrome all / Safari all */\n  -moz-user-select: none;     /* Firefox all */\n  -ms-user-select: none;      /* IE 10+ */\n  user-select: none;          /* Likely future */ \n  height: var(--sidebar-group-header-height);\n  padding-top: 7px;\n  text-transform: uppercase;\n  letter-spacing: 0.08em;\n  cursor: pointer;\n  transition: background-color var(--sidebar-hover-transition-time);\n  position: relative;\n}\n\n.sidebar__group-header:hover {\n  background-color: #111111;\n}\n\n.sidebar__group-header-title {\n  text-align: center;\n  overflow: hidden;\n  padding: 0 24px;\n}\n\n.sidebar__group-header-icon {\n    width: 17px;\n    height: 14px;\n    background-repeat: no-repeat;\n    display: inline-block;\n    position: absolute;\n    background-size: cover;\n    \n    /* icon open */\n    /* feather icon: chevron up */\n    background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM4ODg4ODgiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBjbGFzcz0iZmVhdGhlciBmZWF0aGVyLWNoZXZyb24tdXAiPjxwb2x5bGluZSBwb2ludHM9IjE4IDE1IDEyIDkgNiAxNSI+PC9wb2x5bGluZT48L3N2Zz4=);\n    top: 4px;\n    right: 5px;\n    opacity: 0.0;\n    transition: opacity 0.3;\n}\n\n.sidebar__group-header:hover .sidebar__group-header-icon {\n    opacity: 1.0;\n}\n\n/* icon closed */\n.sidebar__group--closed .sidebar__group-header-icon {\n    /* feather icon: chevron down */\n    background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM4ODg4ODgiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBjbGFzcz0iZmVhdGhlciBmZWF0aGVyLWNoZXZyb24tZG93biI+PHBvbHlsaW5lIHBvaW50cz0iNiA5IDEyIDE1IDE4IDkiPjwvcG9seWxpbmU+PC9zdmc+);\n    top: 4px;\n    right: 5px;\n}\n\n/*\n * SIDEBAR ITEM\n */\n\n.sidebar__item {\n  background-color: #222222;\n  box-sizing: border-box;\n  padding: 7px;\n}\n\n.sidebar__item-label {\n  display: inline-block;\n  -webkit-user-select: none;  /* Chrome all / Safari all */\n  -moz-user-select: none;     /* Firefox all */\n  -ms-user-select: none;      /* IE 10+ */\n  user-select: none;          /* Likely future */ \n  width: calc(50% - 7px);\n  margin-right: 7px;\n  max-height: 1em;\n  text-overflow: ellipsis;\n  /* overflow: hidden; */\n}\n\n.sidebar__item-value-label {\n  font-family: var(--sidebar-monospace-font-stack);\n  display: inline-block;\n  text-overflow: ellipsis;\n  overflow: hidden;\n  white-space: nowrap;\n  max-width: 50%;\n}\n\n.sidebar__item-value-label::selection {\n    background-color: #24baa7;\n    color: #EEEEEE;\n}\n\n.sidebar__item + .sidebar__item,\n.sidebar__item + .sidebar__group,\n.sidebar__group + .sidebar__item,\n.sidebar__group + .sidebar__group {\n  border-top: 1px solid #272727;\n}\n\n/*\n * SIDEBAR ITEM TOGGLE\n */\n\n.sidebar__toggle {\n    cursor: pointer;    \n}\n\n.sidebar__toggle-input {\n  --sidebar-toggle-input-color: #CCCCCC;\n  --sidebar-toggle-input-color-hover: #EEEEEE;\n  --sidebar-toggle-input-border-size: 2px;\n  display: inline;\n  float: right;\n  box-sizing: border-box;\n  border-radius: 50%;\n  cursor: pointer;\n  --toggle-size: 11px;\n  margin-top: 2px;\n  background-color: transparent;\n  border: var(--sidebar-toggle-input-border-size) solid var(--sidebar-toggle-input-color);\n  width: var(--toggle-size);\n  height: var(--toggle-size);\n  transition: background-color var(--sidebar-hover-transition-time);\n  transition: border-color var(--sidebar-hover-transition-time);\n}\n.sidebar__toggle:hover .sidebar__toggle-input {\n  border-color: var(--sidebar-toggle-input-color-hover);\n}\n\n.sidebar__toggle .sidebar__item-value-label {\n  -webkit-user-select: none;  /* Chrome all / Safari all */\n  -moz-user-select: none;     /* Firefox all */\n  -ms-user-select: none;      /* IE 10+ */\n  user-select: none;          /* Likely future */ \n  max-width: calc(50% - 12px);\n}\n.sidebar__toggle-input::after { clear: both; }\n\n.sidebar__toggle--active .sidebar__toggle-input {\n  transition: background-color var(--sidebar-hover-transition-time);\n  background-color: var(--sidebar-toggle-input-color);\n}\n.sidebar__toggle--active .sidebar__toggle-input:hover {\n  background-color: var(--sidebar-toggle-input-color-hover);\n  border-color: var(--sidebar-toggle-input-color-hover);\n  transition: background-color var(--sidebar-hover-transition-time);\n  transition: border-color var(--sidebar-hover-transition-time);\n}\n\n/*\n * SIDEBAR ITEM BUTTON\n */\n\n.sidebar__button {}\n\n.sidebar__button-input {\n  -webkit-user-select: none;  /* Chrome all / Safari all */\n  -moz-user-select: none;     /* Firefox all */\n  -ms-user-select: none;      /* IE 10+ */\n  user-select: none;          /* Likely future */ \n  height: 24px;\n  background-color: #444444;\n  color: #CCCCCC;\n  box-sizing: border-box;\n  padding-top: 5px;\n  text-align: center;\n  border-radius: var(--sidebar-border-radius);\n  cursor: pointer;\n}\n\n.sidebar__button-input:hover {\n  background-color: #555555;\n}\n\n/*\n * VALUE DISPLAY (shows a value)\n */\n\n.sidebar__value-display {}\n\n/*\n * SLIDER\n */\n\n.sidebar__slider {\n  --sidebar-slider-input-height: 18px;\n}\n\n.sidebar__slider-input-wrapper {\n  width: 100%;\n  margin-top: 10px;\n  position: relative;\n}\n\n.sidebar__slider-input {\n  -webkit-appearance: none;  /* Override default CSS styles */\n  appearance: none;\n  margin: 0;\n  width: 100%;\n  height: var(--sidebar-slider-input-height);\n  background: #333333;\n  cursor: pointer;\n  outline: none;\n  -webkit-transition: .2s; /* 0.2 seconds transition on hover */\n  transition: background-color .2s;\n  border: none;\n}\n\n.sidebar__slider-input:focus, .sidebar__slider-input:hover {\n    border: none;\n}\n\n.sidebar__slider-input-active-track {\n  position: absolute;\n  top: 0;\n  left: 0;\n  background-color: #CCCCCC; \n  pointer-events: none;\n  height: var(--sidebar-slider-input-height);\n  /* width: 10px; */\n}\n\n/* Mouse-over effects */\n.sidebar__slider-input:hover {\n  background-color: #444444;\n}\n\n/* The slider handle (use -webkit- (Chrome, Opera, Safari, Edge) and -moz- (Firefox) to override default look) */ \n.sidebar__slider-input::-webkit-slider-thumb {\n    -webkit-appearance: none; /* Override default look */\n    appearance: none;\n    width: var(--sidebar-slider-input-height);\n    /* width: 0 !important; */\n    height: var(--sidebar-slider-input-height);\n    background: #EEEEEE !important;\n    z-index: 999999999999 !important;\n    border: none;\n    border-radius: 0 !important;\n    cursor: pointer;\n}\n.sidebar__slider-input:hover ::-webkit-slider-thumb {\n  background-color: #EEEEEE !important;\n}\n\n.sidebar__slider-input::-moz-range-thumb {\n    /* width: var(--sidebar-slider-input-height); */\n    width: 0 !important;\n    height: var(--sidebar-slider-input-height);\n    background: #EEEEEE;\n    cursor: pointer;\n    border-radius: 0 !important;\n    border: none;\n    outline: 0;\n    z-index: 99999999999999999 !important;\n}\n\n.sidebar__slider-input::-moz-range-track {\n  background-color: transparent;\n}\n\n.sidebar__slider-input::-moz-range-thumb:hover {\n  /* background-color: #EEEEEE; */\n}\n\n.sidebar__slider-input-wrapper:hover .sidebar__slider-input-active-track {\n  background-color: #EEEEEE;  \n}\n\n.sidebar__slider-input-wrapper:hover .sidebar__slider-input::-moz-range-thumb {\n  background-color: #EEEEEE !important;  \n}\n\n.sidebar__slider-input-wrapper:hover .sidebar__slider-input::-webkit-slider-thumb {\n  background-color: #EEEEEE;  \n}\n\n.sidebar__slider input[type=text] {\n    box-sizing: border-box;\n    background-color: #333333;\n    color: #BBBBBB;\n    display: inline-block;\n    width: 50%;\n    height: 18px;\n    outline: none;\n    border: none;\n    border-radius: 0;\n    padding: 0 0 0 4px !important;\n    margin: 0;\n} \n\n.sidebar__slider input[type=text]:active, \n.sidebar__slider input[type=text]:focus,\n.sidebar__slider input[type=text]:hover {\n    background-color: #444444;\n    color: #EEEEEE;\n}\n\n/*\n * TEXT / DESCRIPTION\n */\n \n.sidebar__text .sidebar__item-label {\n    width: auto;\n    display: block;\n    max-height: none;\n    margin-right: 0;\n    line-height: 1.1em;\n} \n\n/*\n * SIDEBAR INPUT\n */\n.sidebar__text-input input[type=text] {\n    box-sizing: border-box;\n    background-color: #333333;\n    color: #BBBBBB;\n    display: inline-block;\n    width: 50%;\n    height: 18px;\n    outline: none;\n    border: none;\n    border-radius: 0;\n    padding: 0 0 0 4px !important;\n    margin: 0;\n} \n\n.sidebar__text-input input[type=text]:active, \n.sidebar__text-input input[type=text]:focus,\n.sidebar__text-input input[type=text]:hover {\n    background-color: #444444;\n    color: #EEEEEE;\n}\n\n/*\n * SIDEBAR SELECT\n */\n \n .sidebar__select {}\n .sidebar__select-select {\n    color: #BBBBBB;\n    -webkit-appearance: none; \n    -moz-appearance: none;\n    appearance: none;\n    box-sizing: border-box;\n    width: 50%;\n    height: 18px;\n    background-color: #333333;\n    background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM4ODg4ODgiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBjbGFzcz0iZmVhdGhlciBmZWF0aGVyLWNoZXZyb24tZG93biI+PHBvbHlsaW5lIHBvaW50cz0iNiA5IDEyIDE1IDE4IDkiPjwvcG9seWxpbmU+PC9zdmc+);\n    background-repeat: no-repeat;\n    background-position: 87px 1px;\n    background-size: 16px 16px;\n    margin: 0;\n    padding: 0 0 0 4px;\n    border-radius: 0;\n    border: none;\n    cursor: pointer;\n    outline: none;\n }\n \n.sidebar__select-select:hover,\n.sidebar__select-select:active,\n.sidebar__select-select:active {\n    background-color: #444444;\n    color: #EEEEEE;\n}\n\n/*\n * COLOR PICKER\n */\n \n .sidebar__color-picker-color-input {}\n \n .sidebar__color-picker input[type=text] {\n    box-sizing: border-box;\n    background-color: #333333;\n    color: #BBBBBB;\n    display: inline-block;\n    width: calc(50% - 21px); /* 50% minus space of picker circle */\n    height: 18px;\n    outline: none;\n    border: none;\n    border-radius: 0;\n    padding: 0 0 0 4px !important;\n    margin: 0;\n    margin-right: 7px;\n} \n\n.sidebar__color-picker input[type=text]:active, \n.sidebar__color-picker input[type=text]:focus,\n.sidebar__color-picker input[type=text]:hover {\n    background-color: #444444;\n    color: #EEEEEE;\n}\n\n.sidebar__color-picker input[type=color],\n.sidebar__palette-picker input[type=color] {\n    display: inline-block;\n    border-radius: 100%;\n    height: 14px;\n    width: 14px;\n    padding: 0;\n    border: none;\n    border-color: transparent;\n    outline: none;\n    background: none;\n    appearance: none;\n    -moz-appearance: none;\n    -webkit-appearance: none;\n    cursor: pointer;\n    position: relative;\n    top: 3px;\n}\n.sidebar__color-picker input[type=color]:focus,\n.sidebar__palette-picker input[type=color]:focus {\n    outline: none;\n}\n.sidebar__color-picker input[type=color]::-moz-color-swatch,\n.sidebar__palette-picker input[type=color]::-moz-color-swatch {\n    border: none;\n}\n.sidebar__color-picker input[type=color]::-webkit-color-swatch-wrapper,\n.sidebar__palette-picker input[type=color]::-webkit-color-swatch-wrapper {\n    padding: 0;\t\n}\n.sidebar__color-picker input[type=color]::-webkit-color-swatch,\n.sidebar__palette-picker input[type=color]::-webkit-color-swatch {\n    border: none;\n    border-radius: 100%;\n}\n\n/*\n * Palette Picker\n */\n.sidebar__palette-picker .sidebar__palette-picker-color-input.first {\n    margin-left: 0;\n}\n.sidebar__palette-picker .sidebar__palette-picker-color-input.last {\n    margin-right: 0;\n}\n.sidebar__palette-picker .sidebar__palette-picker-color-input {\n    margin: 0 4px;\n}\n\n.sidebar__palette-picker .circlebutton {\n    width: 14px;\n    height: 14px;\n    border-radius: 1em;\n    display: inline-block;\n    top: 3px;\n    position: relative;\n}\n\n/*\n * Preset\n */\n.sidebar__item-presets-preset\n{\n    padding:4px;\n    cursor:pointer;\n    padding-left:8px;\n    padding-right:8px;\n    margin-right:4px;\n    background-color:#444;\n\n}\n\n.sidebar__item-presets-preset:hover\n{\n    background-color:#666;\n}";
+// vars
+const CSS_ELEMENT_CLASS = 'cables-sidebar-style'; /* class for the style element to be generated */
+const CSS_ELEMENT_DYNAMIC_CLASS = 'cables-sidebar-dynamic-style'; /* things which can be set via op-port, but not attached to the elements themselves, e.g. minimized opacity */
+const SIDEBAR_CLASS = 'sidebar-cables';
+const SIDEBAR_ID = 'sidebar'+CABLES.uuid();
+const SIDEBAR_ITEMS_CLASS = 'sidebar__items';
+const SIDEBAR_OPEN_CLOSE_BTN_CLASS = 'sidebar__close-button';
+const SIDEBAR_OPEN_CLOSE_BTN_ICON_CLASS = 'sidebar__close-button-icon';
+const BTN_TEXT_OPEN = ''; // 'Close';
+const BTN_TEXT_CLOSED = ''; // 'Show Controls';
+var cssFileContent = attachments.style_css; /* the CSS style attachment */
+let openCloseBtn = null;
+let openCloseBtnIcon = null;
+
+// inputs
+var visiblePort = op.inValueBool("Visible", true);
+var opacityPort = op.inValueSlider('Opacity', 1);
+var defaultMinimizedPort = op.inValueBool('Default Minimized');
+var minimizedOpacityPort = op.inValueSlider('Minimized Opacity', 0.5);
+
+// outputs
+var childrenPort = op.outObject('childs');
+
+var sidebarEl = document.querySelector('.' + SIDEBAR_ID);
+if(!sidebarEl) {
+    sidebarEl = initSidebarElement();    
+}
+var sidebarItemsEl = sidebarEl.querySelector('.' + SIDEBAR_ITEMS_CLASS);
+childrenPort.set({
+    parentElement: sidebarItemsEl,
+    parentOp: op,
+});
+onDefaultMinimizedPortChanged();
+initSidebarCss();
+updateDynamicStyles();
+
+// change listeners
+visiblePort.onChange = onVisiblePortChange;
+opacityPort.onChange = onOpacityPortChange;
+defaultMinimizedPort.onChange = onDefaultMinimizedPortChanged;
+minimizedOpacityPort.onChange = onMinimizedOpacityPortChanged;
+op.onDelete = onDelete;
+
+// functions
+
+function onMinimizedOpacityPortChanged() {
+    updateDynamicStyles();
+}
+
+function onDefaultMinimizedPortChanged() {
+    if(!openCloseBtn) { return; }
+    if(defaultMinimizedPort.get()) {
+        sidebarEl.classList.add('sidebar-cables--closed');
+        // openCloseBtn.textContent = BTN_TEXT_CLOSED;
+    } else {
+        sidebarEl.classList.remove('sidebar-cables--closed');
+        // openCloseBtn.textContent = BTN_TEXT_OPEN;
+    }
+}
+
+function onOpacityPortChange()
+{
+    var opacity = opacityPort.get();
+    sidebarEl.style.opacity = opacity;
+}
+
+function onVisiblePortChange() {
+    if(visiblePort.get()) {
+        sidebarEl.style.display = 'block';
+    } else {
+        sidebarEl.style.display = 'none';
+    }
+}
+
+/**
+ * Some styles cannot be set directly inline, so a dynamic stylesheet is needed.
+ * Here hover states can be set later on e.g.
+ */
+function updateDynamicStyles() {
+    let dynamicStyles = document.querySelectorAll('.' + CSS_ELEMENT_DYNAMIC_CLASS);
+    if(dynamicStyles) {
+        dynamicStyles.forEach(function(e) {
+            e.parentNode.removeChild(e);
+        });    
+    }
+    let newDynamicStyle = document.createElement('style');
+    newDynamicStyle.classList.add(CSS_ELEMENT_DYNAMIC_CLASS);
+    let cssText = '.sidebar--closed .sidebar__close-button { ';
+    cssText +=         'opacity: ' + minimizedOpacityPort.get();
+    cssText +=     '}';
+    let cssTextEl = document.createTextNode(cssText);
+    newDynamicStyle.appendChild(cssTextEl);
+    document.body.appendChild(newDynamicStyle);
+}
+
+function initSidebarElement() {
+    var element = document.createElement('div');
+    element.classList.add(SIDEBAR_CLASS);
+    element.classList.add(SIDEBAR_ID);
+        var canvasWrapper = op.patch.cgl.canvas.parentElement; /* maybe this is bad outside cables!? */
+    canvasWrapper.appendChild(element);
+    var items = document.createElement('div');
+    items.classList.add(SIDEBAR_ITEMS_CLASS);
+    element.appendChild(items);
+    openCloseBtn = document.createElement('div');
+    openCloseBtn.classList.add(SIDEBAR_OPEN_CLOSE_BTN_CLASS);
+    openCloseBtn.addEventListener('click', onOpenCloseBtnClick);
+    // openCloseBtn.textContent = BTN_TEXT_OPEN;
+    element.appendChild(openCloseBtn);
+    openCloseBtnIcon = document.createElement('span');
+    openCloseBtnIcon.classList.add(SIDEBAR_OPEN_CLOSE_BTN_ICON_CLASS);
+    openCloseBtn.appendChild(openCloseBtnIcon);
+    return element;
+}
+
+function onOpenCloseBtnClick(ev) {
+  ev.stopPropagation();
+  const sidebarEl = ev.target.closest('.' + SIDEBAR_CLASS);
+  if(!sidebarEl) { console.error('Sidebar could not be closed...'); return; }
+  sidebarEl.classList.toggle('sidebar--closed');
+  const btn = ev.target;
+  let btnText = BTN_TEXT_OPEN;
+  if(sidebarEl.classList.contains('sidebar--closed')) {
+    btnText = BTN_TEXT_CLOSED;
+   }
+   // btn.textContent = btnText
+}
+
+function initSidebarCss() {
+    //var cssEl = document.getElementById(CSS_ELEMENT_ID);
+    var cssElements = document.querySelectorAll('.' + CSS_ELEMENT_CLASS);
+    // remove old script tag
+    if(cssElements) {
+        cssElements.forEach(function(e) {
+            e.parentNode.removeChild(e);
+        });
+    }
+    var newStyle = document.createElement('style');
+    newStyle.innerHTML = cssFileContent;
+    newStyle.classList.add(CSS_ELEMENT_CLASS);
+    document.body.appendChild(newStyle);
+}
+
+function onDelete() {
+    removeElementFromDOM(sidebarEl);
+}
+
+function removeElementFromDOM(el) {
+    if(el && el.parentNode && el.parentNode.removeChild) {
+        el.parentNode.removeChild(el);    
+    }
+}
+
+
+
+};
+
+Ops.Sidebar.Sidebar.prototype = new CABLES.Op();
+
+//----------------
+
+
+
+// **************************************************************
+// 
+// Ops.Math.Multiply
+// 
+// **************************************************************
+
+Ops.Math.Multiply = function()
+{
+Op.apply(this, arguments);
+var op=this;
+var attachments={};
+const number1=op.addInPort(new Port(op,"number1"));
+const number2=op.addInPort(new Port(op,"number2"));
+const result=op.addOutPort(new Port(op,"result"));
+
+function update()
+{
+    const n1=number1.get();
+    const n2=number2.get();
+
+    if(isNaN(n1))n1=0;
+    if(isNaN(n2))n2=0;
+
+    result.set( n1*n2 );
+}
+
+number1.onValueChanged=update;
+number2.onValueChanged=update;
+
+number1.set(1);
+number2.set(2);
+
+
+};
+
+Ops.Math.Multiply.prototype = new CABLES.Op();
+
+//----------------
+
+
+
+// **************************************************************
+// 
+// Ops.Sidebar.Slider
+// 
+// **************************************************************
+
+Ops.Sidebar.Slider = function()
+{
+Op.apply(this, arguments);
+var op=this;
+var attachments={};
+// constants
+const STEP_DEFAULT = 0.01;
+
+// inputs
+const parentPort = op.inObject('link');
+const labelPort = op.inValueString('Text', 'Slider');
+const inputValuePort = op.inValue('Input', 0.5);
+const minPort = op.inValue("Min", 0);
+const maxPort = op.inValue("Max", 1);
+const stepPort = op.inValue("Step", STEP_DEFAULT);
+const setDefaultValueButtonPort = op.inFunctionButton('Set Default');
+const defaultValuePort = op.inValue('Default', 0.5);
+defaultValuePort.setUiAttribs({ hidePort: true, greyout: true });
+
+// outputs
+const siblingsPort = op.outObject('childs');
+const valuePort = op.outValue('Result', defaultValuePort.get());
+
+// vars
+var el = document.createElement('div');
+el.classList.add('sidebar__item');
+el.classList.add('sidebar__slider');
+var label = document.createElement('div');
+label.classList.add('sidebar__item-label');
+var labelText = document.createTextNode(labelPort.get());
+label.appendChild(labelText);
+el.appendChild(label);
+var value = document.createElement('input');
+value.value = defaultValuePort.get();
+value.classList.add('sidebar__text-input-input');
+// value.setAttribute('type', 'number'); /* not possible to use '.' instead of ',' as separator on German computer, so not usable... */
+value.setAttribute('type', 'text');
+// value.setAttribute('lang', 'en-US'); // force '.' as decimal separator
+// value.setAttribute('pattern', '[0-9]+([\.][0-9]+)?'); // only allow '.' as separator
+// value.setAttribute('step', 'any'); /* we cannot use the slider step, as it restricts valid numbers to be entered */
+// value.setAttribute('formnovalidate', '');
+value.oninput = onTextInputChanged;
+el.appendChild(value);
+var inputWrapper = document.createElement('div');
+inputWrapper.classList.add('sidebar__slider-input-wrapper');
+el.appendChild(inputWrapper);
+var activeTrack = document.createElement('div');
+activeTrack.classList.add('sidebar__slider-input-active-track');
+inputWrapper.appendChild(activeTrack);
+var input = document.createElement('input');
+input.classList.add('sidebar__slider-input');
+input.setAttribute('min', minPort.get());
+input.setAttribute('max', maxPort.get());
+input.setAttribute('type', 'range');
+input.setAttribute('step', stepPort.get());
+input.setAttribute('value', defaultValuePort.get());
+input.style.display = 'block'; /* needed because offsetWidth returns 0 otherwise */
+inputWrapper.appendChild(input);
+updateActiveTrack();
+input.addEventListener('input', onSliderInput);
+
+// events
+parentPort.onChange = onParentChanged;
+labelPort.onChange = onLabelTextChanged;
+inputValuePort.onChange = onInputValuePortChanged;
+defaultValuePort.onChange = onDefaultValueChanged;
+setDefaultValueButtonPort.onTriggered = onSetDefaultValueButtonPress;
+minPort.onChange = onMinPortChange;
+maxPort.onChange = onMaxPortChange;
+stepPort.onChange = stepPortChanged;
+op.onDelete = onDelete;
+
+op.init=function()
+{
+    valuePort.set(parseFloat(defaultValuePort.get()));
+};
+
+// functions
+
+function onTextInputChanged(ev) {
+    let newValue = parseFloat(ev.target.value);
+    if(isNaN(newValue)) {
+        newValue = 0;
+    }
+    const min = minPort.get();
+    const max = maxPort.get();
+    if(newValue < min) { newValue = min; }
+    else if(newValue > max) { newValue = max; }
+    // input.value = newValue;
+    valuePort.set(newValue);
+    updateActiveTrack();
+    inputValuePort.set(newValue);
+    if(CABLES.UI){
+        gui.patch().showOpParams(op); /* update DOM */
+    }
+}
+
+function onInputValuePortChanged() {
+    let newValue = parseFloat(inputValuePort.get());
+    const minValue = minPort.get();
+    const maxValue = maxPort.get();
+    if(newValue > maxValue) { newValue = maxValue; }
+    else if(newValue < minValue) { newValue = minValue; }
+    value.value = newValue;
+    input.value = newValue;
+    valuePort.set(newValue);
+    updateActiveTrack();
+}
+
+function onSetDefaultValueButtonPress() {
+    let newValue = parseFloat(inputValuePort.get());
+    const minValue = minPort.get();
+    const maxValue = maxPort.get();
+    if(newValue > maxValue) { newValue = maxValue; }
+    else if(newValue < minValue) { newValue = minValue; }
+    value.value = newValue;
+    input.value = newValue;
+    valuePort.set(newValue);
+    defaultValuePort.set(newValue);
+    if(CABLES.UI){
+        gui.patch().showOpParams(op); /* update DOM */
+    }
+    updateActiveTrack();
+}
+
+function onSliderInput(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    value.value = ev.target.value;
+    const inputFloat = parseFloat(ev.target.value);
+    valuePort.set(inputFloat);
+    inputValuePort.set(inputFloat);
+    if(CABLES.UI){
+        gui.patch().showOpParams(op); /* update DOM */
+    }
+    updateActiveTrack();
+    return false;
+}
+
+function stepPortChanged() {
+    var step = stepPort.get();
+    input.setAttribute('step', step);
+    updateActiveTrack();
+}
+
+function updateActiveTrack(val) {
+    let valueToUse = parseFloat(input.value);
+    if(typeof val !== 'undefined') {
+        valueToUse = val;
+    }
+    let availableWidth = input.offsetWidth; /* this returns 0 at the beginning... */
+    if(availableWidth === 0) { availableWidth = 206; }
+    var trackWidth = CABLES.map(
+        valueToUse,
+        parseFloat(input.min), 
+        parseFloat(input.max), 
+        0, 
+        availableWidth - 16 /* subtract slider thumb width */
+    );
+    // activeTrack.style.width = 'calc(' + percentage + '%' + ' - 9px)';
+    activeTrack.style.width = trackWidth + 'px';
+}
+
+function onMinPortChange() {
+    var min = minPort.get();
+    input.setAttribute('min', min);
+    updateActiveTrack();
+}
+
+function onMaxPortChange() {
+    var max = maxPort.get();
+    input.setAttribute('max', max);
+    updateActiveTrack();
+}
+
+function onDefaultValueChanged() {
+    var defaultValue = defaultValuePort.get();
+    valuePort.set(parseFloat(defaultValue));
+    onMinPortChange();
+    onMaxPortChange();
+    input.value = defaultValue;
+    value.value = defaultValue;
+    updateActiveTrack(defaultValue); // needs to be passed as argument, is this async?
+}
+
+function onLabelTextChanged() {
+    var labelText = labelPort.get();
+    label.textContent = labelText;
+    if(CABLES.UI) {
+        op.setTitle('Slider: ' + labelText);    
+    }
+}
+
+function onParentChanged() {
+    var parent = parentPort.get();
+    if(parent && parent.parentElement) {
+        parent.parentElement.appendChild(el);
+        siblingsPort.set(null);
+        siblingsPort.set(parent);
+    } else { // detach
+        if(el.parentElement) {
+            el.parentElement.removeChild(el);    
+        }
+    }
+}
+
+function showElement(el) {
+    if(el) {
+        el.style.display = 'block';
+    }
+}
+
+function hideElement(el) {
+    if(el) {
+        el.style.display = 'none';
+    }
+}
+
+function onDelete() {
+    removeElementFromDOM(el);
+}
+
+function removeElementFromDOM(el) {
+    if(el && el.parentNode && el.parentNode.removeChild) {
+        el.parentNode.removeChild(el);    
+    }
+}
+
+
+};
+
+Ops.Sidebar.Slider.prototype = new CABLES.Op();
+
+//----------------
+
+
+
+// **************************************************************
+// 
+// Ops.ShaderEffects.TransformInstanced
+// 
+// **************************************************************
+
+Ops.ShaderEffects.TransformInstanced = function()
+{
+Op.apply(this, arguments);
+var op=this;
+var attachments={};
+attachments["transform_instanced_vert"]="\nfloat MOD_mulA=smoothstep(MOD_start,MOD_start-MOD_transDist,instanceIndex);\nfloat MOD_mul=1.0-MOD_mulA;\n\n#ifdef MOD_HAS_ENDING\n    float MOD_mulB=smoothstep(MOD_start+MOD_width+MOD_transDist,MOD_start+MOD_width,instanceIndex);\n    MOD_mul=(MOD_mulB-MOD_mulA);\n#endif\n\nmat4 MOD_rotm;\n\nMOD_rotm[0][0]=1.0+(MOD_mul*MOD_scaleX);\nMOD_rotm[1][1]=1.0+(MOD_mul*MOD_scaleY);\nMOD_rotm[2][2]=1.0+(MOD_mul*MOD_scaleZ);\nMOD_rotm[3][3]=1.0;\n\nMOD_rotm=MOD_rotm*MOD_rotationMatrix(vec3(1.0,0.0,0.0),MOD_mul*MOD_rotX);\nMOD_rotm=MOD_rotm*MOD_rotationMatrix(vec3(0.0,1.0,0.0),MOD_mul*MOD_rotY);\nMOD_rotm=MOD_rotm*MOD_rotationMatrix(vec3(0.0,0.0,1.0),MOD_mul*MOD_rotZ);\n\nMOD_rotm[3].x=MOD_mul*MOD_posX;\nMOD_rotm[3].y=MOD_mul*MOD_posY;\nMOD_rotm[3].z=MOD_mul*MOD_posZ;\n\nmMatrix*=MOD_rotm;\n";
+attachments["transform_instanced_head_vert"]="#ifndef ATTRIB_instanceIndex\n  #define ATTRIB_instanceIndex\n  IN float instanceIndex;\n#endif\n\n#ifndef ATTRIB_instanceIndexFrag\n  #define ATTRIB_instanceIndexFrag\n  OUT float instanceIndexFrag;\n#endif\n\nUNI float MOD_rotX;\nUNI float MOD_rotY;\nUNI float MOD_rotZ;\n\nUNI float MOD_posX;\nUNI float MOD_posY;\nUNI float MOD_posZ;\n\nUNI float MOD_scaleX;\nUNI float MOD_scaleY;\nUNI float MOD_scaleZ;\n\nUNI float MOD_start;\nUNI float MOD_width;\nUNI float MOD_transDist;\n\nmat4 MOD_rotationMatrix(vec3 axis, float angle)\n{\n    axis = normalize(axis);\n    float s = sin(angle);\n    float c = cos(angle);\n    float oc = 1.0 - c;\n    \n    return mat4(oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,  0.0,\n                oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,  0.0,\n                oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c,           0.0,\n                0.0,                                0.0,                                0.0,                                1.0);\n}\n";
+var cgl=op.patch.cgl;
+
+op.render=op.addInPort(new Port(this,"render",OP_PORT_TYPE_FUNCTION));
+op.trigger=op.addOutPort(new Port(this,"trigger",OP_PORT_TYPE_FUNCTION));
+
+var inStrength=op.inValue("Amount",1);
+
+var inStart=op.inValue("Start Index",0);
+var inWidth=op.inValue("Width",20);
+var inHasEnd=op.inValueBool("Ending",true);
+var inTransDist=op.inValue("Transition Distance",50);
+
+var inPosX=op.inValue("Pos X",0);
+var inPosY=op.inValue("Pos Y",0);
+var inPosZ=op.inValue("Pos Z",0);
+
+var inRotX=op.inValue("Rot X",0);
+var inRotY=op.inValue("Rot Y",0);
+var inRotZ=op.inValue("Rot Z",0);
+
+var inScaleX=op.inValue("Scale X",1);
+var inScaleY=op.inValue("Scale Y",1);
+var inScaleZ=op.inValue("Scale Z",1);
+
+
+
+
+var shader=null;
+
+
+// var srcHeadVert=attachments.perlin_instposition_vert||'';
+
+var srcBodyVert=attachments.transform_instanced_vert||'';
+var srcHeadVert=attachments.transform_instanced_head_vert||'';
+
+
+//     .endl()+'instanceIndexFrag=instanceIndex;'
+//     .endl();
+
+
+// .endl()+'IN float instanceIndex;'
+// .endl()+'OUT float instanceIndexFrag;'
+// .endl();
+
+
+var moduleVert=null;
+var moduleFrag=null;
+function removeModule()
+{
+    if(shader && moduleVert) shader.removeModule(moduleVert);
+    shader=null;
+}
+
+
+op.render.onLinkChanged=removeModule;
+
+inHasEnd.onChange=updateEnding;
+
+function updateEnding()
+{
+    if(shader)
+        if(inHasEnd.get())shader.define(moduleVert.prefix+"HAS_ENDING");
+            else shader.removeDefine(moduleVert.prefix+"HAS_ENDING");
+}
+
+
+op.render.onTriggered=function()
+{
+    if(!cgl.getShader())
+    {
+         op.trigger.trigger();
+         return;
+    }
+    
+    if(cgl.getShader()!=shader)
+    {
+        if(shader) removeModule();
+        shader=cgl.getShader();
+
+        moduleVert=shader.addModule(
+            {
+                title:op.objName,
+                name:'MODULE_VERTEX_POSITION',
+                srcHeadVert:srcHeadVert,
+                srcBodyVert:srcBodyVert
+            });
+
+        op.uniRotX=new CGL.Uniform(shader,'f',moduleVert.prefix+'rotX',inRotX);
+        op.uniRotY=new CGL.Uniform(shader,'f',moduleVert.prefix+'rotY',inRotY);
+        op.uniRotZ=new CGL.Uniform(shader,'f',moduleVert.prefix+'rotZ',inRotZ);
+
+        op.uniposX=new CGL.Uniform(shader,'f',moduleVert.prefix+'posX',inPosX);
+        op.uniposY=new CGL.Uniform(shader,'f',moduleVert.prefix+'posY',inPosY);
+        op.uniposZ=new CGL.Uniform(shader,'f',moduleVert.prefix+'posZ',inPosZ);
+
+        op.uniscaleX=new CGL.Uniform(shader,'f',moduleVert.prefix+'scaleX',inScaleX);
+        op.uniscaleY=new CGL.Uniform(shader,'f',moduleVert.prefix+'scaleY',inScaleY);
+        op.uniscaleZ=new CGL.Uniform(shader,'f',moduleVert.prefix+'scaleZ',inScaleZ);
+        
+        op.uniStart=new CGL.Uniform(shader,'f',moduleVert.prefix+'start',inStart);
+        op.uniEnd=new CGL.Uniform(shader,'f',moduleVert.prefix+'width',inWidth);
+        op.uniTrans=new CGL.Uniform(shader,'f',moduleVert.prefix+'transDist',inTransDist);
+        
+
+        inStrength.uniform=new CGL.Uniform(shader,'f',moduleVert.prefix+'strength',inStrength);
+        updateEnding();
+    }
+    
+
+
+    if(!shader)return;
+
+    op.trigger.trigger();
 };
 
 
 
 
-tfilter.set('linear');
-wrap.set('repeat');
 
 
-textureOut.set(CGL.Texture.getEmptyTexture(cgl));
+
+
+
+
+
+
 
 
 
 };
 
-Ops.Gl.Texture.prototype = new CABLES.Op();
+Ops.ShaderEffects.TransformInstanced.prototype = new CABLES.Op();
+
+//----------------
+
+
+
+// **************************************************************
+// 
+// Ops.Math.Sum
+// 
+// **************************************************************
+
+Ops.Math.Sum = function()
+{
+Op.apply(this, arguments);
+var op=this;
+var attachments={};
+var result=op.addOutPort(new Port(op,"result"));
+var number1=op.inValue("number1");
+var number2=op.inValue("number2");
+
+function exec()
+{
+    var v=parseFloat(number1.get())+parseFloat(number2.get());
+    if(!isNaN(v)) result.set( v );
+}
+
+number1.onValueChanged=exec;
+number2.onValueChanged=exec;
+
+number1.set(1);
+number2.set(1);
+
+
+};
+
+Ops.Math.Sum.prototype = new CABLES.Op();
+
+//----------------
+
+
+
+// **************************************************************
+// 
+// Ops.Gl.Matrix.Scale
+// 
+// **************************************************************
+
+Ops.Gl.Matrix.Scale = function()
+{
+Op.apply(this, arguments);
+var op=this;
+var attachments={};
+const render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
+const scale=op.addInPort(new Port(op,"scale"));
+const trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
+
+const cgl=op.patch.cgl;
+const vScale=vec3.create();
+scale.onChange=scaleChanged;
+scale.set(1.0);
+scaleChanged();
+
+render.onTriggered=function()
+{
+    cgl.pushModelMatrix();
+    mat4.scale(cgl.mMatrix,cgl.mMatrix, vScale);
+    trigger.trigger();
+    cgl.popModelMatrix();
+};
+
+function scaleChanged()
+{
+    vec3.set(vScale, scale.get(),scale.get(),scale.get());
+};
+
+
+
+};
+
+Ops.Gl.Matrix.Scale.prototype = new CABLES.Op();
 
 //----------------
 
