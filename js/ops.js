@@ -2,13 +2,14 @@
 
 var Ops=Ops || {};
 Ops.Gl=Ops.Gl || {};
+Ops.Exp=Ops.Exp || {};
 Ops.Anim=Ops.Anim || {};
 Ops.Array=Ops.Array || {};
-Ops.Trigger=Ops.Trigger || {};
+Ops.Exp.Gl=Ops.Exp.Gl || {};
 Ops.Gl.Matrix=Ops.Gl.Matrix || {};
 Ops.Gl.Meshes=Ops.Gl.Meshes || {};
-Ops.Gl.Shader=Ops.Gl.Shader || {};
-Ops.Gl.TextureEffects=Ops.Gl.TextureEffects || {};
+Ops.Gl.ShaderEffects=Ops.Gl.ShaderEffects || {};
+Ops.Exp.Gl.ShaderEffects=Ops.Exp.Gl.ShaderEffects || {};
 
 //----------------
 
@@ -218,345 +219,178 @@ Ops.Gl.MainLoop.prototype = new CABLES.Op();
 
 // **************************************************************
 // 
-// Ops.Trigger.Sequence
+// Ops.Gl.Meshes.Sphere
 // 
 // **************************************************************
 
-Ops.Trigger.Sequence = function()
+Ops.Gl.Meshes.Sphere = function()
 {
 Op.apply(this, arguments);
 var op=this;
 var attachments={};
-
-var exe=op.addInPort(new Port(op,"exe",OP_PORT_TYPE_FUNCTION));
-
-var exes=[];
-var triggers=[];
-
-var triggerAll=function()
-{
-    for(var i=0;i<triggers.length;i++) triggers[i].trigger();
-};
-
-exe.onTriggered=triggerAll;
-
-var num=16;
-
-for(var i=0;i<num;i++)
-{
-    triggers.push( op.addOutPort(new Port(op,"trigger "+i,OP_PORT_TYPE_FUNCTION)) );
-    
-    if(i<num-1)
-    {
-        var newExe=op.addInPort(new Port(op,"exe "+i,OP_PORT_TYPE_FUNCTION));
-        newExe.onTriggered=triggerAll;
-        exes.push( newExe );
-    }
-}
+var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
+var inStacks=op.inValueInt("stacks",32);
+var inSlices=op.inValueInt("slices",32);
+var inRadius=op.addInPort(new Port(op,"radius",OP_PORT_TYPE_VALUE));
+var inRender=op.inValueBool("Render",true);
 
 
-};
-
-Ops.Trigger.Sequence.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Array.Array3xSubdivide
-// 
-// **************************************************************
-
-Ops.Array.Array3xSubdivide = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-
-
-var inArr=op.inArray("Points");
-var subDivs=op.inValue("Num Subdivs",5);
-var bezier=op.inValueBool("Smooth",true);
-
-var result=op.outArray("Result");
-
-subDivs.onChange=calc;
-bezier.onChange=calc;
-inArr.onChange=calc;
-
-function ip(x0,x1,x2,t)//Bezier 
-{
-    var r =(x0 * (1-t) * (1-t) + 2 * x1 * (1 - t)* t + x2 * t * t);
-    return r;
-}
-
-var arr=[];
-
-function calc()
-{
-    if(!inArr.get())
-    {
-        result.set(null);
-        return;
-    }
-    var subd=Math.floor(subDivs.get());
-    var inPoints=inArr.get();
-    
-    if(inPoints.length<3)return;
-    
-    var i=0;
-    var j=0;
-    var k=0;
-
-    if(subd>0 && !bezier.get())
-    {
-        var newLen=(inPoints.length-3)*(subd);
-        if(newLen!=arr.length)
-        {
-            op.log("resize subdiv arr");
-            arr.length=newLen;
-        }
-
-        var count=0;
-        for(i=0;i<inPoints.length-3;i+=3)
-        {
-            for(j=0;j<subd;j++)
-            {
-                for(k=0;k<3;k++)
-                {
-                    arr[count]=
-                        inPoints[i+k]+
-                            ( inPoints[i+k+3] - inPoints[i+k] ) *
-                            j/subd
-                            ;
-                    count++;
-                }
-            }
-        }
-    }
-    else
-    if(subd>0 && bezier.get() )
-    {
-        var newLen=(inPoints.length-3)*(subd-1);
-        if(newLen!=arr.length)  arr.length=newLen;
-        var count=0;
-
-        for(i=3;i<inPoints.length-6;i+=3)
-        {
-            for(j=0;j<subd;j++)
-            {
-                for(k=0;k<3;k++)
-                {
-                    var p=ip(
-                            (inPoints[i+k-3]+inPoints[i+k])/2,
-                            inPoints[i+k+0],
-                            (inPoints[i+k+3]+inPoints[i+k+0])/2,
-                            j/subd
-                            );
-
-                    // points.push(p);
-                    arr[count]=p;
-                    count++;
-                }
-            }
-        }
-    }
-    
-    // op.log('subdiv ',inPoints.length,arr.length);
-    // op.log(arr);
-    result.set(null);
-    result.set(arr);
-}
-
-
-};
-
-Ops.Array.Array3xSubdivide.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.Shader.PointMaterial
-// 
-// **************************************************************
-
-Ops.Gl.Shader.PointMaterial = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-attachments["shader_frag"]="precision highp float;\n\n{{MODULES_HEAD}}\n\nIN vec2 texCoord;\n#ifdef HAS_TEXTURES\n   \n   #ifdef HAS_TEXTURE_DIFFUSE\n       uniform sampler2D diffTex;\n   #endif\n   #ifdef HAS_TEXTURE_MASK\n       uniform sampler2D texMask;\n   #endif\n#endif\nuniform float r;\nuniform float g;\nuniform float b;\nuniform float a;\n\nvoid main()\n{\n    {{MODULE_BEGIN_FRAG}}\n\n    vec4 col=vec4(r,g,b,a);\n\n    #ifdef HAS_TEXTURES\n\n        #ifdef HAS_TEXTURE_MASK\n            float mask=texture2D(texMask,vec2(gl_PointCoord.x,(1.0-gl_PointCoord.y))).r;\n        #endif\n\n        #ifdef HAS_TEXTURE_DIFFUSE\n\n            #ifdef LOOKUP_TEXTURE\n                col=texture2D(diffTex,texCoord);\n            #endif\n            #ifndef LOOKUP_TEXTURE\n                col=texture2D(diffTex,vec2(gl_PointCoord.x,(1.0-gl_PointCoord.y)));\n            #endif\n\n            #ifdef COLORIZE_TEXTURE\n              col.r*=r;\n              col.g*=g;\n              col.b*=b;\n            #endif\n        #endif\n        col.a*=a;\n    #endif\n\n    {{MODULE_COLOR}}\n\n    #ifdef MAKE_ROUND\n        if ((gl_PointCoord.x-0.5)*(gl_PointCoord.x-0.5) + (gl_PointCoord.y-0.5)*(gl_PointCoord.y-0.5) > 0.25) discard; //col.a=0.0;\n    #endif\n\n    #ifdef HAS_TEXTURE_MASK\n        col.a=mask;\n    #endif\n\n\n    // #ifdef RANDOMIZE_COLOR\n        // col.rgb*=fract(sin(dot(texCoord.xy ,vec2(12.9898,78.233))) * 43758.5453);\n    // #endif\n\n\n\n    outColor = col;\n}\n";
-attachments["shader_vert"]="{{MODULES_HEAD}}\nIN vec3 vPosition;\nIN vec2 attrTexCoord;\n\nOUT vec3 norm;\n#ifdef HAS_TEXTURES\n    OUT vec2 texCoord;\n#endif\n\nUNI mat4 projMatrix;\nUNI mat4 modelMatrix;\nUNI mat4 viewMatrix;\n\nUNI float pointSize;\nUNI vec3 camPos;\n\nUNI float canvasWidth;\nUNI float canvasHeight;\nUNI float camDistMul;\n\nUNI float randomSize;\n\nIN float attrVertIndex;\n\nfloat rand(float n){return fract(sin(n) * 43758.5453123);}\n\n#define POINTMATERIAL\n\nvoid main()\n{\n    float psMul=sqrt(canvasWidth*canvasHeight)*0.001+0.00000000001;\n    float sizeMultiply=1.0;\n\n    #ifdef HAS_TEXTURES\n        texCoord=attrTexCoord;\n    #endif\n    \n    mat4 mMatrix=modelMatrix;\n\n    vec4 pos = vec4( vPosition, 1. );\n\n    {{MODULE_VERTEX_POSITION}}\n\n    vec4 model=mMatrix * pos;\n\n    psMul+=rand(attrVertIndex)*randomSize;\n\n    psMul*=sizeMultiply;\n\n    #ifndef SCALE_BY_DISTANCE\n        gl_PointSize = pointSize * psMul;\n    #endif\n    #ifdef SCALE_BY_DISTANCE\n        float cameraDist = distance(model.xyz, camPos);\n        gl_PointSize = (pointSize / cameraDist) * psMul;\n    #endif\n\n\n\n\n    gl_Position = projMatrix * viewMatrix * model;\n\n\n}\n";
-var cgl=op.patch.cgl;
-
-var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION) );
 var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-var shaderOut=op.addOutPort(new Port(op,"shader",OP_PORT_TYPE_OBJECT));
+var geomOut=op.addOutPort(new Port(op,"geometry",OP_PORT_TYPE_OBJECT));
 
-var pointSize=op.addInPort(new Port(op,"PointSize",OP_PORT_TYPE_VALUE));
-var randomSize=op.inValue("Random Size",0);
+inRadius.set(1);
+geomOut.ignoreValueSerialize=true;
 
-var makeRound=op.addInPort(new Port(op,"Round",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-var doScale=op.addInPort(new Port(op,"Scale by Distance",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-var r=op.addInPort(new Port(op,"r",OP_PORT_TYPE_VALUE,{ display:'range',colorPick:'true' }));
-var g=op.addInPort(new Port(op,"g",OP_PORT_TYPE_VALUE,{ display:'range' }));
-var b=op.addInPort(new Port(op,"b",OP_PORT_TYPE_VALUE,{ display:'range' }));
-var a=op.addInPort(new Port(op,"a",OP_PORT_TYPE_VALUE,{ display:'range' }));
-var preMultipliedAlpha=op.addInPort(new Port(op,"preMultiplied alpha",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-
-
-makeRound.set(true);
-doScale.set(false);
-pointSize.set(3);
+var cgl=op.patch.cgl;
+var mesh=null;
+var geom=null;
+var geomVertices=[];
+var geomVertexNormals=[];
+var geomTexCoords=[];
+var geomVerticesIndices=[];
 
 
-var shader=new CGL.Shader(cgl,'PointMaterial');
-shader.setModules(['MODULE_VERTEX_POSITION','MODULE_COLOR','MODULE_BEGIN_FRAG']);
+inSlices.onChange=function(){ mesh=null; };
+inStacks.onChange=function(){ mesh=null; };
+inRadius.onChange=function(){ mesh=null; };
 
-shader.define('MAKE_ROUND');
-
-var uniPointSize=new CGL.Uniform(shader,'f','pointSize',pointSize);
-var uniRandomSize=new CGL.Uniform(shader,'f','randomSize',randomSize);
-
-
-shaderOut.set(shader);
-shader.setSource(attachments.shader_vert,attachments.shader_frag);
-shader.glPrimitive=cgl.gl.POINTS;
-shader.bindTextures=bindTextures;
-shaderOut.ignoreValueSerialize=true;
-
-r.set(Math.random());
-g.set(Math.random());
-b.set(Math.random());
-a.set(1.0);
-
-r.uniform=new CGL.Uniform(shader,'f','r',r);
-g.uniform=new CGL.Uniform(shader,'f','g',g);
-b.uniform=new CGL.Uniform(shader,'f','b',b);
-a.uniform=new CGL.Uniform(shader,'f','a',a);
-
-var uniWidth=new CGL.Uniform(shader,'f','canvasWidth',cgl.canvasWidth);
-var uniHeight=new CGL.Uniform(shader,'f','canvasHeight',cgl.canvasHeight);
-
-render.onTriggered=doRender;
-
-var texture=op.inTexture("texture");
-var textureUniform=null;
-
-var textureMask=op.inTexture("Texture Mask");
-var textureMaskUniform=null;
-
-op.preRender=function()
+op.preRender=
+render.onTriggered=function()
 {
-    if(shader)shader.bind();
-    doRender();
-};
+    if(!mesh) updateMesh();
 
-function bindTextures()
-{
-    if(texture.get())
-    {
-        cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-        cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, texture.get().tex);
-    }
-    if(textureMask.get())
-    {
-        cgl.gl.activeTexture(cgl.gl.TEXTURE1);
-        cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, textureMask.get().tex);
-    }
-}
-
-function doRender()
-{
-    uniWidth.setValue(cgl.canvasWidth);
-    uniHeight.setValue(cgl.canvasHeight);
+    if(inRender.get()) mesh.render(cgl.getShader());
     
-    
-    cgl.setShader(shader);
-    bindTextures();
-    if(preMultipliedAlpha.get())cgl.gl.blendFunc(cgl.gl.ONE, cgl.gl.ONE_MINUS_SRC_ALPHA);
-
     trigger.trigger();
-    if(preMultipliedAlpha.get())cgl.gl.blendFunc(cgl.gl.SRC_ALPHA,cgl.gl.ONE_MINUS_SRC_ALPHA);
+};
 
-    cgl.setPreviousShader();
+function updateMesh()
+{
+    var nslices=Math.round(inSlices.get());
+    var nstacks=Math.round(inStacks.get());
+    if(nslices<1)nslices=1;
+    if(nstacks<1)nstacks=1;
+    var r=inRadius.get();
+    
+    uvSphere(r, nslices, nstacks);
+}
+
+// updateMesh();
+
+function circleTable(n,halfCircle)
+{
+    var i;
+    /* Table size, the sign of n flips the circle direction */
+    var size = Math.abs(n);
+
+    /* Determine the angle between samples */
+    var angle = (halfCircle?1:2)*Math.PI/n;// ( n === 0 ) ? 1 : n ;
+
+    /* Allocate memory for n samples, plus duplicate of first entry at the end */
+    var sint=[];
+    var cost=[];
+
+    /* Compute cos and sin around the circle */
+    sint[0] = 0.0;
+    cost[0] = 1.0;
+
+    for (i=0; i<size; i++)
+    {
+        sint[i] = Math.sin(angle*i);
+        cost[i] = Math.cos(angle*i);
+    }
+    
+    if (halfCircle)
+    {
+        sint[size] =  0.0;  /* sin PI */
+        cost[size] = -1.0;  /* cos PI */
+    }
+    else
+    {
+        /* Last sample is duplicate of the first (sin or cos of 2 PI) */
+        sint[size] = sint[0];
+        cost[size] = cost[0];
+    }
+    return {cost:cost,sint:sint};
 }
 
 
-doScale.onValueChanged=function()
+// from http://math.hws.edu/graphicsbook/source/webgl/basic-object-models-IFS.js
+function uvSphere(radius, slices, stacks)
 {
-    if(doScale.get()) shader.define('SCALE_BY_DISTANCE');
-        else shader.removeDefine('SCALE_BY_DISTANCE');
-};
+    var geom=new CGL.Geometry("sphere");
 
-makeRound.onValueChanged=function()
-{
-    if(makeRound.get()) shader.define('MAKE_ROUND');
-        else shader.removeDefine('MAKE_ROUND');
-};
-
-texture.onValueChanged=function()
-{
-    if(texture.get())
+    radius = radius || 0.5;
+    slices = slices || 32;
+    stacks = stacks || 16;
+    var vertexCount = (slices+1)*(stacks+1);
+    var vertices = new Float32Array( 3*vertexCount );
+    var normals = new Float32Array( 3* vertexCount );
+    var texCoords = new Float32Array( 2*vertexCount );
+    var indices = new Uint16Array( 2*slices*stacks*3 );
+    var du = 2*Math.PI/slices;
+    var dv = Math.PI/stacks;
+    var i,j,u,v,x,y,z;
+    var indexV = 0;
+    var indexT = 0;
+    for (i = 0; i <= stacks; i++)
     {
-        if(textureUniform!==null)return;
-        shader.removeUniform('diffTex');
-        shader.define('HAS_TEXTURE_DIFFUSE');
-        textureUniform=new CGL.Uniform(shader,'t','diffTex',0);
+        v = -Math.PI/2 + i*dv;
+        for (j = 0; j <= slices; j++)
+        {
+            u = j*du;
+            x = Math.cos(u)*Math.cos(v);
+            y = Math.sin(u)*Math.cos(v);
+            z = Math.sin(v);
+
+            vertices[indexV] = radius*x;
+            normals[indexV++] = x;
+
+            vertices[indexV] = radius*y;
+            normals[indexV++] = y;
+
+            vertices[indexV] = radius*z;
+            normals[indexV++] = z;
+
+            texCoords[indexT++] = j/slices;
+            texCoords[indexT++] = i/stacks;
+        } 
     }
-    else
+    var k = 0;
+    for (j = 0; j < stacks; j++)
     {
-        shader.removeUniform('diffTex');
-        shader.removeDefine('HAS_TEXTURE_DIFFUSE');
-        textureUniform=null;
+        var row1 = j*(slices+1);
+        var row2 = (j+1)*(slices+1);
+        for (i = 0; i < slices; i++)
+        {
+            indices[k++] = row1 + i;
+            indices[k++] = row2 + i;
+            indices[k++] = row2 + i + 1;
+         
+            indices[k++] = row1 + i;
+            indices[k++] = row2 + i + 1;
+            indices[k++] = row1 + i + 1;
+
+        }
     }
-};
 
-textureMask.onValueChanged=function()
-{
-    if(textureMask.get())
-    {
-        if(textureMaskUniform!==null)return;
-        shader.removeUniform('texMask');
-        shader.define('HAS_TEXTURE_MASK');
-        textureMaskUniform=new CGL.Uniform(shader,'t','texMask',1);
-    }
-    else
-    {
-        shader.removeUniform('texMask');
-        shader.removeDefine('HAS_TEXTURE_MASK');
-        textureMaskUniform=null;
-    }
-};
+    geom.vertices=vertices;
+    geom.vertexNormals=normals;
+    geom.texCoords=texCoords;
+    geom.verticesIndices=indices;
 
+    geomOut.set(geom);
 
+    if(!mesh)mesh=new CGL.Mesh(cgl,geom,cgl.gl.TRIANGLE_STRIP);
+    mesh.setGeom(geom);
 
-var colorizeTexture=op.addInPort(new Port(op,"colorizeTexture",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-colorizeTexture.set(false);
-colorizeTexture.onValueChanged=function()
-{
-    if(colorizeTexture.get()) shader.define('COLORIZE_TEXTURE');
-        else shader.removeDefine('COLORIZE_TEXTURE');
-};
-
-var textureLookup=op.addInPort(new Port(op,"texture Lookup",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-textureLookup.set(false);
-textureLookup.onValueChanged=function()
-{
-    if(textureLookup.get()) shader.define('LOOKUP_TEXTURE');
-        else shader.removeDefine('LOOKUP_TEXTURE');
-};
+}
 
 
 
 };
 
-Ops.Gl.Shader.PointMaterial.prototype = new CABLES.Op();
+Ops.Gl.Meshes.Sphere.prototype = new CABLES.Op();
 
 //----------------
 
@@ -630,124 +464,379 @@ Ops.Array.RandomArray3x.prototype = new CABLES.Op();
 
 // **************************************************************
 // 
-// Ops.Gl.Depth
+// Ops.Gl.Matrix.OrbitControls
 // 
 // **************************************************************
 
-Ops.Gl.Depth = function()
+Ops.Gl.Matrix.OrbitControls = function()
 {
 Op.apply(this, arguments);
 var op=this;
 var attachments={};
+const render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
+const minDist=op.addInPort(new Port(op,"min distance",OP_PORT_TYPE_VALUE));
+const maxDist=op.addInPort(new Port(op,"max distance",OP_PORT_TYPE_VALUE));
+const initialAxis=op.addInPort(new Port(op,"initial axis y",OP_PORT_TYPE_VALUE,{display:'range'}));
+const initialX=op.addInPort(new Port(op,"initial axis x",OP_PORT_TYPE_VALUE,{display:'range'}));
+const initialRadius=op.inValue("initial radius",0);
+
+const mul=op.addInPort(new Port(op,"mul",OP_PORT_TYPE_VALUE));
+
+const smoothness=op.inValueSlider("Smoothness",1.0);
+const restricted=op.addInPort(new Port(op,"restricted",OP_PORT_TYPE_VALUE,{display:'bool'}));
+
+const active=op.inValueBool("Active",true);
+
+const inReset=op.inFunctionButton("Reset");
+
+const allowPanning=op.inValueBool("Allow Panning",true);
+const allowZooming=op.inValueBool("Allow Zooming",true);
+const allowRotation=op.inValueBool("Allow Rotation",true);
+const pointerLock=op.inValueBool("Pointerlock",false);
+
+const speedX=op.inValue("Speed X",1);
+const speedY=op.inValue("Speed Y",1);
+
+const trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
+const outRadius=op.addOutPort(new Port(op,"radius",OP_PORT_TYPE_VALUE));
+const outYDeg=op.addOutPort(new Port(op,"Rot Y",OP_PORT_TYPE_VALUE));
+const outXDeg=op.addOutPort(new Port(op,"Rot X",OP_PORT_TYPE_VALUE));
+
+restricted.set(true);
+mul.set(1);
+minDist.set(0.05);
+maxDist.set(99999);
+
+inReset.onTriggered=reset;
+
 var cgl=op.patch.cgl;
+var eye=vec3.create();
+var vUp=vec3.create();
+var vCenter=vec3.create();
+var viewMatrix=mat4.create();
+var vOffset=vec3.create();
 
-var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
+initialAxis.set(0.5);
 
-var clear=op.addInPort(new Port(op,"clear depth",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-var enable=op.addInPort(new Port(op,"enable depth testing",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-var write=op.addInPort(new Port(op,"write to depth buffer",OP_PORT_TYPE_VALUE,{ display:'bool' }));
 
-var depthFunc=op.addInPort(new Port(op,"ratio",OP_PORT_TYPE_VALUE ,{display:'dropdown',values:['never','always','less','less or equal','greater', 'greater or equal','equal','not equal']} ));
-var theDepthFunc=cgl.gl.LEQUAL;
+var mouseDown=false;
+var radius=5;
+outRadius.set(radius);
 
-depthFunc.onValueChanged=updateFunc;
-depthFunc.set('less or equal');
-clear.set(false);
-enable.set(true);
-write.set(true);
+var lastMouseX=0,lastMouseY=0;
+var percX=0,percY=0;
 
-function updateFunc()
+
+vec3.set(vCenter, 0,0,0);
+vec3.set(vUp, 0,1,0);
+
+var tempEye=vec3.create();
+var finalEye=vec3.create();
+var tempCenter=vec3.create();
+var finalCenter=vec3.create();
+
+var px=0;
+var py=0;
+
+var divisor=1;
+var element=null;
+updateSmoothness();
+
+op.onDelete=unbind;
+
+var doLockPointer=false;
+
+pointerLock.onChange=function()
 {
-    if(depthFunc.get()=='never') theDepthFunc=cgl.gl.NEVER;
-    if(depthFunc.get()=='always') theDepthFunc=cgl.gl.ALWAYS;
-    if(depthFunc.get()=='less') theDepthFunc=cgl.gl.LESS;
-    if(depthFunc.get()=='less or equal') theDepthFunc=cgl.gl.LEQUAL;
-    if(depthFunc.get()=='greater') theDepthFunc=cgl.gl.GREATER;
-    if(depthFunc.get()=='greater or equal') theDepthFunc=cgl.gl.GEQUAL;
-    if(depthFunc.get()=='equal') theDepthFunc=cgl.gl.EQUAL;
-    if(depthFunc.get()=='not equal') theDepthFunc=cgl.gl.NOTEQUAL;
+    doLockPointer=pointerLock.get();
+    console.log("doLockPointer",doLockPointer);
+};
+
+function reset()
+{
+    px=px%(Math.PI*2);
+    py=py%(Math.PI*2);
+
+    percX=(initialX.get()*Math.PI*2);
+    percY=(initialAxis.get()-0.5);
+    radius=initialRadius.get();
+    eye=circlePos( percY );
+}
+
+function updateSmoothness()
+{
+    divisor=smoothness.get()*10+1.0;
+}
+
+smoothness.onChange=updateSmoothness;
+
+var initializing=true;
+
+function ip(val,goal)
+{
+    if(initializing)return goal;
+    return val+(goal-val)/divisor;
 }
 
 render.onTriggered=function()
 {
-    if(clear.get()) cgl.gl.clear(cgl.gl.DEPTH_BUFFER_BIT);
+    cgl.pushViewMatrix();
 
-    if(!enable.get()) cgl.gl.disable(cgl.gl.DEPTH_TEST);
-        else cgl.gl.enable(cgl.gl.DEPTH_TEST);
+    px=ip(px,percX);
+    py=ip(py,percY);
+    
+    outYDeg.set( (py+0.5)*180 );
+    outXDeg.set( (px)*180 );
 
-    if(!write.get()) cgl.gl.depthMask(false);
-        else cgl.gl.depthMask(true);
+    eye=circlePos(py);
 
-    cgl.gl.depthFunc(theDepthFunc);
+    vec3.add(tempEye, eye, vOffset);
+    vec3.add(tempCenter, vCenter, vOffset);
+
+    finalEye[0]=ip(finalEye[0],tempEye[0]);
+    finalEye[1]=ip(finalEye[1],tempEye[1]);
+    finalEye[2]=ip(finalEye[2],tempEye[2]);
+    
+    finalCenter[0]=ip(finalCenter[0],tempCenter[0]);
+    finalCenter[1]=ip(finalCenter[1],tempCenter[1]);
+    finalCenter[2]=ip(finalCenter[2],tempCenter[2]);
+    
+    mat4.lookAt(viewMatrix, finalEye, finalCenter, vUp);
+    mat4.rotate(viewMatrix, viewMatrix, px, vUp);
+    mat4.multiply(cgl.vMatrix,cgl.vMatrix,viewMatrix);
 
     trigger.trigger();
-
-    cgl.gl.enable(cgl.gl.DEPTH_TEST);
-    cgl.gl.depthMask(true);
-    cgl.gl.depthFunc(cgl.gl.LEQUAL);
+    cgl.popViewMatrix();
+    initializing=false;
 };
 
-};
-
-Ops.Gl.Depth.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Anim.Timer
-// 
-// **************************************************************
-
-Ops.Anim.Timer = function()
+function circlePos(perc)
 {
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-var playPause=op.inValueBool("Play",true);
-var reset=op.inFunctionButton("Reset");
-var outTime=op.outValue("Time");
-var inSpeed=op.inValue("Speed",1);
+    if(radius<minDist.get()*mul.get())radius=minDist.get()*mul.get();
+    if(radius>maxDist.get()*mul.get())radius=maxDist.get()*mul.get();
+    
+    outRadius.set(radius*mul.get());
+    
+    var i=0,degInRad=0;
+    var vec=vec3.create();
+    degInRad = 360*perc/2*CGL.DEG2RAD;
+    vec3.set(vec,
+        Math.cos(degInRad)*radius*mul.get(),
+        Math.sin(degInRad)*radius*mul.get(),
+        0);
+    return vec;
+}
 
-var timer=new CABLES.Timer();
-
-playPause.onChange=setState;
-setState();
-
-function setState()
+function onmousemove(event)
 {
-    if(playPause.get())
+    if(!mouseDown) return;
+
+    var x = event.clientX;
+    var y = event.clientY;
+    
+    var movementX=(x-lastMouseX)*speedX.get();
+    var movementY=(y-lastMouseY)*speedY.get();
+
+    if(doLockPointer)
     {
-        timer.play();
-        op.patch.addOnAnimFrame(op);
+        movementX=event.movementX*mul.get();
+        movementY=event.movementY*mul.get();
+    }
+
+    if(event.which==3 && allowPanning.get())
+    {
+        vOffset[2]+=movementX*0.01*mul.get();
+        vOffset[1]+=movementY*0.01*mul.get();
+    }
+    else
+    if(event.which==2 && allowZooming.get())
+    {
+        radius+=(movementY)*0.05;
+        eye=circlePos(percY);
     }
     else
     {
-        timer.pause();
-        op.patch.removeOnAnimFrame(op);
+        if(allowRotation.get())
+        {
+            percX+=(movementX)*0.003;
+            percY+=(movementY)*0.002;
+            
+            if(restricted.get())
+            {
+                if(percY>0.5)percY=0.5;
+                if(percY<-0.5)percY=-0.5;
+            }
+            
+        }
+    }
+
+    lastMouseX=x;
+    lastMouseY=y;
+}
+
+function onMouseDown(event)
+{
+    lastMouseX = event.clientX;
+    lastMouseY = event.clientY;
+    mouseDown=true;
+    
+    if(doLockPointer)
+    {
+        var el=op.patch.cgl.canvas;
+        el.requestPointerLock = el.requestPointerLock || el.mozRequestPointerLock || el.webkitRequestPointerLock;
+        if(el.requestPointerLock) el.requestPointerLock();
+        else console.log("no t found");
+        // document.addEventListener("mousemove", onmousemove, false);
+
+        document.addEventListener('pointerlockchange', lockChange, false);
+        document.addEventListener('mozpointerlockchange', lockChange, false);
+        document.addEventListener('webkitpointerlockchange', lockChange, false);
     }
 }
 
-reset.onTriggered=function()
+function onMouseUp()
 {
-    timer.setTime(0);
-    outTime.set(0);
-};
+    mouseDown=false;
+    // cgl.canvas.style.cursor='url(/ui/img/rotate.png),pointer';
+            
+    if(doLockPointer)
+    {
+        document.removeEventListener('pointerlockchange', lockChange, false);
+        document.removeEventListener('mozpointerlockchange', lockChange, false);
+        document.removeEventListener('webkitpointerlockchange', lockChange, false);
 
-op.onAnimFrame=function()
+        if(document.exitPointerLock) document.exitPointerLock();
+        document.removeEventListener("mousemove", onmousemove, false);
+    }
+}
+
+function lockChange()
 {
-    timer.update();
-    outTime.set(timer.get()*inSpeed.get());
+    var el=op.patch.cgl.canvas;
+
+    if (document.pointerLockElement === el || document.mozPointerLockElement === el || document.webkitPointerLockElement === el)
+    {
+        document.addEventListener("mousemove", onmousemove, false);
+        console.log("listening...");
+    }
+}
+
+function onMouseEnter(e)
+{
+    // cgl.canvas.style.cursor='url(/ui/img/rotate.png),pointer';
+}
+
+initialRadius.onValueChange(function()
+{
+    // percX=(initialX.get()*Math.PI*2);
+    console.log('init radius');
+    radius=initialRadius.get();
+    reset();
+});
+
+initialX.onValueChange(function()
+{
+    px=percX=(initialX.get()*Math.PI*2);
+    
+});
+
+initialAxis.onValueChange(function()
+{
+    py=percY=(initialAxis.get()-0.5);
+    eye=circlePos( percY );
+});
+
+var onMouseWheel=function(event)
+{
+    if(allowZooming.get())
+    {
+        var delta=CGL.getWheelSpeed(event)*0.06;
+        radius+=(parseFloat(delta))*1.2;
+
+        eye=circlePos(percY);
+        event.preventDefault();
+    }
+};
+
+var ontouchstart=function(event)
+{
+    doLockPointer=false;
+    if(event.touches && event.touches.length>0) onMouseDown(event.touches[0]);
+};
+
+var ontouchend=function(event)
+{
+    doLockPointer=false;
+    onMouseUp();
+};
+
+var ontouchmove=function(event)
+{
+    doLockPointer=false;
+    if(event.touches && event.touches.length>0) onmousemove(event.touches[0]);
+};
+
+active.onChange=function()
+{
+    if(active.get())bind();
+        else unbind();
+}
+
+
+this.setElement=function(ele)
+{
+    unbind();
+    element=ele;
+    bind();
+}
+
+function bind()
+{
+    element.addEventListener('mousemove', onmousemove);
+    element.addEventListener('mousedown', onMouseDown);
+    element.addEventListener('mouseup', onMouseUp);
+    element.addEventListener('mouseleave', onMouseUp);
+    element.addEventListener('mouseenter', onMouseEnter);
+    element.addEventListener('contextmenu', function(e){e.preventDefault();});
+    element.addEventListener('wheel', onMouseWheel);
+
+    element.addEventListener('touchmove', ontouchmove);
+    element.addEventListener('touchstart', ontouchstart);
+    element.addEventListener('touchend', ontouchend);
+
+}
+
+function unbind()
+{
+    if(!element)return;
+    
+    element.removeEventListener('mousemove', onmousemove);
+    element.removeEventListener('mousedown', onMouseDown);
+    element.removeEventListener('mouseup', onMouseUp);
+    element.removeEventListener('mouseleave', onMouseUp);
+    element.removeEventListener('mouseenter', onMouseUp);
+    element.removeEventListener('wheel', onMouseWheel);
+
+    element.removeEventListener('touchmove', ontouchmove);
+    element.removeEventListener('touchstart', ontouchstart);
+    element.removeEventListener('touchend', ontouchend);
+}
+
+
+
+eye=circlePos(0);
+this.setElement(cgl.canvas);
+
+
+bind();
+
+initialX.set(0.25);
+initialRadius.set(0.05);
+
 
 };
 
-
-};
-
-Ops.Anim.Timer.prototype = new CABLES.Op();
+Ops.Gl.Matrix.OrbitControls.prototype = new CABLES.Op();
 
 //----------------
 
@@ -755,255 +844,213 @@ Ops.Anim.Timer.prototype = new CABLES.Op();
 
 // **************************************************************
 // 
-// Ops.Gl.Matrix.ArrayPathFollowParticles
+// Ops.Gl.Matrix.Scale
 // 
 // **************************************************************
 
-Ops.Gl.Matrix.ArrayPathFollowParticles = function()
+Ops.Gl.Matrix.Scale = function()
 {
 Op.apply(this, arguments);
 var op=this;
 var attachments={};
-attachments["pathfollow_vert"]="\nfloat off=MOD_offset;\nif(MOD_randomSpeed)\n{\n    // off*=rndPos.x;\n    off*=MOD_rand(pos.xy);\n}\n\nfloat fr=fract(abs(mod(off+rndOffset,float(PATHFOLLOW_POINTS))));\nint index=int(abs(mod(off+rndOffset,max(0.0,float(PATHFOLLOW_POINTS))  )));\nint index2=int(abs(mod(off+1.0+rndOffset,max(0.0,float(PATHFOLLOW_POINTS)) )));\n\nif(index2!=0)\n{\n    pos.xyz = mix( MOD_points[index] ,MOD_points[index2] ,fr);\n\n    #ifdef CHECK_DISTANCE\n        if( distance(MOD_points[index] ,MOD_points[index2]) > MOD_maxDistance ) pos.xyz=vec3(9999999.0,9999999.0,9999999.0);\n    #endif\n}\nelse\n{\n    pos.xyz=MOD_points[0];\n}\n\npos.xyz+=rndPos;";
-attachments["pathfollow_head_vert"]="\nUNI vec3 MOD_points[PATHFOLLOW_POINTS];\nUNI bool MOD_randomSpeed;\nUNI float MOD_maxIndex;\nUNI float MOD_offset;\nUNI float MOD_maxDistance;\n\nIN vec3 rndPos;\nIN float rndOffset;\n\n\nfloat MOD_rand(vec2 co){\n    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);\n}\n";
+const render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
+const scale=op.addInPort(new Port(op,"scale"));
+const trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
 
-var exec=op.inFunction("Exec");
-var inPoints=op.inArray("Points");
-var inParticles=op.inValue("Num Particles",500);
-var inLength=op.inValue("Length",20);
-var inSpread=op.inValue("Spread",0.2);
-var inOffset=op.inValue("Offset");
+const cgl=op.patch.cgl;
+const vScale=vec3.create();
+scale.onChange=scaleChanged;
+scale.set(1.0);
+scaleChanged();
 
-var inMaxDistance=op.inValue("Max Distance",0);
+render.onTriggered=function()
+{
+    cgl.pushModelMatrix();
+    mat4.scale(cgl.mMatrix,cgl.mMatrix, vScale);
+    trigger.trigger();
+    cgl.popModelMatrix();
+};
 
-var inRandomSpeed=op.inValueBool("RandomSpeed");
+function scaleChanged()
+{
+    vec3.set(vScale, scale.get(),scale.get(),scale.get());
+};
 
-var next=op.outFunction("Next");
 
+
+};
+
+Ops.Gl.Matrix.Scale.prototype = new CABLES.Op();
+
+//----------------
+
+
+
+// **************************************************************
+// 
+// Ops.Array.RandomArray
+// 
+// **************************************************************
+
+Ops.Array.RandomArray = function()
+{
+Op.apply(this, arguments);
+var op=this;
+var attachments={};
+const numValues=op.inValueInt("numValues");
+
+const seed=op.addInPort(new Port(op,"random seed"));
+const min=op.addInPort(new Port(op,"Min"));
+const max=op.addInPort(new Port(op,"Max"));
+
+const values=op.addOutPort(new Port(op, "values",OP_PORT_TYPE_ARRAY));
+values.ignoreValueSerialize=true;
+
+numValues.set(100);
+min.set(0);
+max.set(1);
+
+max.onValueChanged=init;
+min.onValueChanged=init;
+numValues.onValueChanged=init;
+seed.onValueChanged=init;
+values.onLinkChanged=init;
+
+var arr=[];
+init();
+
+function init()
+{
+    Math.randomSeed=seed.get();
+    
+    arr.length=Math.abs(parseInt(numValues.get())) || 100;
+    for(var i=0;i<arr.length;i++)
+    {
+        arr[i]=Math.seededRandom()* ( max.get() - min.get() ) + parseFloat(min.get()) ;
+    }
+    
+    values.set(null);
+    values.set(arr);
+}
+
+
+};
+
+Ops.Array.RandomArray.prototype = new CABLES.Op();
+
+//----------------
+
+
+
+// **************************************************************
+// 
+// Ops.Exp.Gl.ShaderEffects.AreaScaler
+// 
+// **************************************************************
+
+Ops.Exp.Gl.ShaderEffects.AreaScaler = function()
+{
+Op.apply(this, arguments);
+var op=this;
+var attachments={};
+attachments["areascale_vert"]="\nUNI bool MOD_smooth;\nUNI float MOD_x,MOD_y,MOD_z;\nUNI float MOD_strength;\nUNI float MOD_size;\n\nvec4 MOD_scaler(vec4 pos,vec4 worldPos,vec3 normal)\n{\n    vec3 forcePos=vec3(MOD_x,MOD_y,MOD_z);\n    vec3 vecToOrigin=worldPos.xyz-forcePos;\n    float dist=abs(length(vecToOrigin));\n    float distAlpha = (MOD_size - dist) ;\n\n    if(MOD_smooth) distAlpha=smoothstep(0.0,MOD_size,distAlpha);\n    \n    float m=(distAlpha*MOD_strength);\n    \n    #ifndef MOD_TO_ZERO\n    m+=1.0;\n    #endif\n    \n    pos.xyz*=m;\n\n    return pos;\n}\n";
 
 var cgl=op.patch.cgl;
-var shaderModule=null;
+
+op.render=op.addInPort(new Port(this,"render",OP_PORT_TYPE_FUNCTION));
+op.trigger=op.addOutPort(new Port(this,"trigger",OP_PORT_TYPE_FUNCTION));
+
+var inSize=op.inValue("Size",1);
+var inStrength=op.inValue("Strength",1);
+var inSmooth=op.inValueBool("Smooth",true);
+var inToZero=op.inValueBool("Keep Min Size",true);
+
+
+var x=op.inValue("x");
+var y=op.inValue("y");
+var z=op.inValue("z");
+
+
+
 var shader=null;
-var mesh=null;
-var needsRebuild=true;
-var geom=null;
-var updateUniformPoints=false;
 
-exec.onLinkChanged=removeModule;
+var srcHeadVert=attachments.areascale_vert;
 
-var pointArray=null;
-
-function resetLater()
-{
-    needsRebuild=true;
-}
-inParticles.onChange=resetLater;
-inLength.onChange=resetLater;
-inSpread.onChange=resetLater;
-
-pointArray=new Float32Array(99);
-
-
-inPoints.onChange=function()
-{
-    if(inPoints.get())
-    {
-        pointArray=inPoints.get();//new Float32Array(inPoints.get());
-        updateUniformPoints=true;
-
-
-                
-        // console.log(inPoints.get().length,"points");
-        // resetLater();
-    }
-};
-
-function getRandomVec(size)
-{
-    return [
-            (Math.random()-0.5)*2*size,
-            (Math.random()-0.5)*2*size,
-            (Math.random()-0.5)*2*size
-        ];
-}
-
-function rebuild()
-{
-    op.log("rebuild");
-    mesh=null;
-    needsRebuild=false;
-    var i=0;
-    var verts=null;
-    var num=Math.abs(Math.floor(inParticles.get())*3);
-    if(!verts || verts.length!=num) verts=new Float32Array(num);
-
-    for(i=0;i<verts.length;i+=3)
-    {
-        verts[i+0]=(Math.random()-0.5);
-        verts[i+1]=(Math.random()-0.5);
-        verts[i+2]=(Math.random()-0.5);
-    }
-
-    if(!geom)geom=new CGL.Geometry();
-    geom.setPointVertices(verts);
-
-    if(!mesh) 
-    {
-        mesh =new CGL.Mesh(cgl,geom,cgl.gl.POINTS);
-
-        mesh.addVertexNumbers=true;
-        mesh._verticesNumbers=null;
-
-        op.log("NEW MESH");
-    }
-    else
-    {
-        mesh.unBind();
-    }
-    mesh.setGeom(geom);
-
-    var rndArray=new Float32Array(num);
+var srcBodyVert=''
+    .endl()+'pos=MOD_scaler(pos,mMatrix*pos,attrVertNormal);' //modelMatrix*
+    .endl();
     
-    var spread=inSpread.get();
-    if(spread<0)spread=0;
-
-    for(i=0;i<num/3;i++)
-    {
-        var v=getRandomVec(spread);
-        while(vec3.len(v)>spread/2) v=getRandomVec(spread);
-        
-        rndArray[i*3+0]=v[0];
-        rndArray[i*3+1]=v[1];
-        rndArray[i*3+2]=v[2];
-
-    }
-    rndArray[i]=(Math.random()-0.5)*spread;
-
-    mesh.setAttribute("rndPos",rndArray,3);
-
-
-    // offset random
-
-    var rndOffset=new Float32Array(num/3);
-    for(i=0;i<num/3;i++)
-        rndOffset[i]=(Math.random())*inLength.get();
-
-    mesh.setAttribute("rndOffset",rndOffset,1);
-
-    // speed random
-
-    var rndOffset=new Float32Array(num/3);
-    for(i=0;i<num/3;i++)
-        rndOffset[i]=(Math.random())*inLength.get();
-
-    mesh.setAttribute("rndOffset",rndOffset,1);
-    
-    
-}
+var moduleVert=null;
 
 function removeModule()
 {
-    if(shader && shaderModule)
-    {
-        shader.removeModule(shaderModule);
-        shader=null;
-    }
+    if(shader && moduleVert) shader.removeModule(moduleVert);
+    shader=null;
 }
 
-inMaxDistance.onChange=updateCheckDistance;
+inToZero.onChange=updateToZero;
 
-function updateCheckDistance()
+function updateToZero()
 {
+    if(!shader)return;
+    if(inToZero.get()) shader.removeDefine(moduleVert.prefix+"TO_ZERO");
+        else shader.define(moduleVert.prefix+"TO_ZERO");
+
+}
+
+
+
+
+op.render.onLinkChanged=removeModule;
+
+op.render.onTriggered=function()
+{
+    if(!cgl.getShader())
+    {
+         op.trigger.trigger();
+         return;
+    }
     
-    if(shader)
-    {
-        shaderModule.maxDistance.setValue(inMaxDistance.get());
-
-
-        if(inMaxDistance.get()==0)
-        {
-            shader.removeDefine("CHECK_DISTANCE");
-        }
-        else
-        {
-            shader.define("CHECK_DISTANCE");
-            console.log("JAJA CHECK DISTANCE");
-        }
-
-
-    }
-}
-
-
-exec.onTriggered=function()
-{
-    // if(op.instanced(exec))return;
-    if(!inPoints.get() || inPoints.get().length===0)return;
-    if(needsRebuild)rebuild();
+    if(CABLES.UI && gui.patch().isCurrentOp(op)) 
+        gui.setTransformGizmo(
+            {
+                posX:x,
+                posY:y,
+                posZ:z
+            });
 
     if(cgl.getShader()!=shader)
     {
-        console.log("shader changed....");
-        if(shader)removeModule();
-
+        if(shader) removeModule();
         shader=cgl.getShader();
 
-        // shader.glslVersion=300;
-        shaderModule=shader.addModule(
+        moduleVert=shader.addModule(
             {
                 title:op.objName,
                 name:'MODULE_VERTEX_POSITION',
-                srcHeadVert:attachments.pathfollow_head_vert,
-                srcBodyVert:attachments.pathfollow_vert,
-                priority:-2
+                srcHeadVert:srcHeadVert,
+                srcBodyVert:srcBodyVert
             });
 
-        shaderModule.offset=new CGL.Uniform(shader,'f',shaderModule.prefix+'offset',0);
-        shaderModule.point=new CGL.Uniform(shader,'i',shaderModule.prefix+'point',0);
-        shaderModule.uniPoints=new CGL.Uniform(shader,'3f[]',shaderModule.prefix+'points',new Float32Array([0,0,0,0,0,0]));
-        shaderModule.randomSpeed=new CGL.Uniform(shader,'b',shaderModule.prefix+'randomSpeed',false);
-        shaderModule.maxIndex=new CGL.Uniform(shader,'i',shaderModule.prefix+'maxIndex',0);
-        shaderModule.maxDistance=new CGL.Uniform(shader,'f',shaderModule.prefix+'maxDistance',inMaxDistance.get());
-        updateCheckDistance();
+        inSize.uniform=new CGL.Uniform(shader,'f',moduleVert.prefix+'size',inSize);
+        inStrength.uniform=new CGL.Uniform(shader,'f',moduleVert.prefix+'strength',inStrength);
+        inSmooth.uniform=new CGL.Uniform(shader,'f',moduleVert.prefix+'smooth',inSmooth);
+
+        x.uniform=new CGL.Uniform(shader,'f',moduleVert.prefix+'x',x);
+        y.uniform=new CGL.Uniform(shader,'f',moduleVert.prefix+'y',y);
+        z.uniform=new CGL.Uniform(shader,'f',moduleVert.prefix+'z',z);
     }
-
-    if(updateUniformPoints && pointArray)
-    {
-        // if(!shader.hasDefine("PATHFOLLOW_POINTS"))shader.define('PATHFOLLOW_POINTS',pointArray.length/3);
-        if(shader.getDefine("PATHFOLLOW_POINTS")<Math.floor(pointArray.length/3))
-        {
-            console.log(shader.getDefine("PATHFOLLOW_POINTS"));
-            shader.define('PATHFOLLOW_POINTS',Math.floor(pointArray.length/3));
-            // console.log('pointArray.length/3',pointArray.length/3);
-        }
-        // shader.define('PATHFOLLOW_POINTS',pointArray.length/3);
-
-        // shaderModule.uniNumPoints.setValue(pointArray.length/3);
-        shaderModule.uniPoints.setValue(pointArray);
-        updateUniformPoints=false;
-        
-        // console.log("update uniforms");
-    }
-
-    shaderModule.maxIndex.setValue(pointArray.length);
-    // var off=inOffset.get()%((pointArray.length-1)/3);
-    var off=inOffset.get();
-
-    shaderModule.randomSpeed.setValue(inRandomSpeed.get());
-    shaderModule.offset.setValue(off);
-    // shaderModule.point.setValue(Math.floor(pointArray.length/3*Math.random() ));
-
+    
+    
     if(!shader)return;
 
-    if(mesh) mesh.render(shader);
-    
-    next.trigger();
+    op.trigger.trigger();
+};
+
 
 };
 
-};
-
-Ops.Gl.Matrix.ArrayPathFollowParticles.prototype = new CABLES.Op();
+Ops.Exp.Gl.ShaderEffects.AreaScaler.prototype = new CABLES.Op();
 
 //----------------
 
@@ -1011,1359 +1058,188 @@ Ops.Gl.Matrix.ArrayPathFollowParticles.prototype = new CABLES.Op();
 
 // **************************************************************
 // 
-// Ops.Gl.Render2Texture
+// Ops.Gl.MeshInstancer
 // 
 // **************************************************************
 
-Ops.Gl.Render2Texture = function()
+Ops.Gl.MeshInstancer = function()
 {
 Op.apply(this, arguments);
 var op=this;
 var attachments={};
-var cgl=op.patch.cgl;
+// TODO: remove array3xtransformedinstanced....
 
-var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-var msaa=op.inValueSelect("MSAA",["none","2x","4x","8x"],"none");
-var useVPSize=op.addInPort(new Port(op,"use viewport size",OP_PORT_TYPE_VALUE,{ display:'bool' }));
+var exe=op.addInPort(new Port(op,"exe",OP_PORT_TYPE_FUNCTION));
 
-var width=op.inValueInt("texture width");
-var height=op.inValueInt("texture height");
+var inTransformations=op.inArray("positions");
+var inScales=op.inArray("Scale Array");
+var inScale=op.inValue("Scale",1);
+var geom=op.inObject("geom");
+geom.ignoreValueSerialize=true;
 
-var tfilter=op.addInPort(new Port(op,"filter",OP_PORT_TYPE_VALUE,{display:'dropdown',values:['nearest','linear','mipmap']}));
-var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-// var tex=op.addOutPort(new Port(op,"texture",OP_PORT_TYPE_TEXTURE,{preview:true}));
-// var texDepth=op.addOutPort(new Port(op,"textureDepth",OP_PORT_TYPE_TEXTURE));
-
-var tex=op.outTexture("texture");
-var texDepth=op.outTexture("textureDepth");
-
-var fpTexture=op.inValueBool("HDR");
-var depth=op.inValueBool("Depth",true);
-var clear=op.inValueBool("Clear",true);
-
-var fb=null;
-
-width.set(512);
-height.set(512);
-useVPSize.set(true);
-tfilter.set('linear');
-var reInitFb=true;
-
-
-// todo why does it only work when we render a mesh before>?>?????
-// only happens with matcap material with normal map....
-
-useVPSize.onChange=updateVpSize;
-function updateVpSize()
-{
-    if(useVPSize.get())
-    {
-        width.setUiAttribs({hidePort:true,greyout:true});
-        height.setUiAttribs({hidePort:true,greyout:true});
-    }
-    else
-    {
-        width.setUiAttribs({hidePort:false,greyout:false});
-        height.setUiAttribs({hidePort:false,greyout:false});
-    }
-}
-
-fpTexture.onChange=function()
-{
-    reInitFb=true;
-};
-
-depth.onChange=function()
-{
-    reInitFb=true;
-};
-
-clear.onChange=function()
-{
-    reInitFb=true;
-};
-
-var onFilterChange=function()
-{
-    reInitFb=true;
-};
-
-msaa.onChange=function()
-{
-    reInitFb=true;
-};
-
-function doRender()
-{
-    if(!fb || reInitFb)
-    {
-        if(fb) fb.delete();
-        if(cgl.glVersion>=2) 
-        {
-            var ms=true;
-            var msSamples=4;
-            
-            if(msaa.get()=="none")
-            {
-                msSamples=0;
-                ms=false;
-            }
-            if(msaa.get()=="2x")msSamples=2;
-            if(msaa.get()=="4x")msSamples=4;
-            if(msaa.get()=="8x")msSamples=8;
-            
-            fb=new CGL.Framebuffer2(cgl,8,8,
-            {
-                isFloatingPointTexture:fpTexture.get(),
-                multisampling:ms,
-                depth:depth.get(),
-                multisamplingSamples:msSamples,
-                clear:clear.get()
-            });
-        }
-        else
-        {
-            fb=new CGL.Framebuffer(cgl,8,8,{isFloatingPointTexture:fpTexture.get()});
-        }
-
-        if(tfilter.get()=='nearest') fb.setFilter(CGL.Texture.FILTER_NEAREST);
-            else if(tfilter.get()=='linear') fb.setFilter(CGL.Texture.FILTER_LINEAR);
-            else if(tfilter.get()=='mipmap') fb.setFilter(CGL.Texture.FILTER_MIPMAP);
-
-        tex.set( fb.getTextureColor() );
-        texDepth.set( fb.getTextureDepth() );
-        reInitFb=false;
-    }
-
-    if(useVPSize.val)
-    {
-        width.set( cgl.getViewPort()[2] );
-        height.set( cgl.getViewPort()[3] );
-    }
-
-    if(fb.getWidth()!=Math.ceil(width.get()) || fb.getHeight()!=Math.ceil(height.get()) )
-    {
-        fb.setSize( width.get(),height.get() );
-    }
-
-
-
-    fb.renderStart(cgl);
-    // mesh.render(cgl.getShader());
-
-
-    trigger.trigger();
-    // cgl.printError("start r2t");
-    fb.renderEnd(cgl);
-
-    cgl.resetViewPort();
-}
-
-
-render.onTriggered=doRender;
-
-
-tfilter.onValueChange(onFilterChange);
-updateVpSize();
-
-};
-
-Ops.Gl.Render2Texture.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.Shader.BasicMaterial
-// 
-// **************************************************************
-
-Ops.Gl.Shader.BasicMaterial = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-attachments["shader_frag"]="{{MODULES_HEAD}}\n\nIN vec2 texCoord;\n#ifdef HAS_TEXTURES\n    IN vec2 texCoordOrig;\n    #ifdef HAS_TEXTURE_DIFFUSE\n        uniform sampler2D tex;\n    #endif\n    #ifdef HAS_TEXTURE_OPACITY\n        uniform sampler2D texOpacity;\n   #endif\n#endif\nuniform float r;\nuniform float g;\nuniform float b;\nuniform float a;\n\nvoid main()\n{\n    {{MODULE_BEGIN_FRAG}}\n    vec4 col=vec4(r,g,b,a);\n    \n    #ifdef HAS_TEXTURES\n        #ifdef HAS_TEXTURE_DIFFUSE\n\n           col=texture2D(tex,vec2(texCoord.x,(1.0-texCoord.y)));\n\n//         col=texture2D(tex,vec2(texCoords.x*1.0,(1.0-texCoords.y)*1.0));\n           #ifdef COLORIZE_TEXTURE\n               col.r*=r;\n               col.g*=g;\n               col.b*=b;\n           #endif\n    #endif\n    col.a*=a;\n    #ifdef HAS_TEXTURE_OPACITY\n      \n            #ifdef TRANSFORMALPHATEXCOORDS\n                col.a*=texture2D(texOpacity,vec2(texCoordOrig.s,1.0-texCoordOrig.t)).g;\n            #endif\n            #ifndef TRANSFORMALPHATEXCOORDS\n                col.a*=texture2D(texOpacity,vec2(texCoord.s,1.0-texCoord.t)).g;\n            #endif\n       #endif\n       \n    #endif\n\n    {{MODULE_COLOR}}\n\n    outColor = col;\n}\n";
-attachments["shader_vert"]="{{MODULES_HEAD}}\n\nIN vec3 vPosition;\nIN vec3 attrVertNormal;\nIN vec2 attrTexCoord;\n\nOUT vec3 norm;\nOUT vec2 texCoord;\nOUT vec2 texCoordOrig;\n\nUNI mat4 projMatrix;\nUNI mat4 modelMatrix;\nUNI mat4 viewMatrix;\n\n#ifdef HAS_TEXTURES\n    #ifdef TEXTURE_REPEAT\n        UNI float diffuseRepeatX;\n        UNI float diffuseRepeatY;\n        UNI float texOffsetX;\n        UNI float texOffsetY;\n    #endif\n#endif\n\n\nvoid main()\n{\n    mat4 mMatrix=modelMatrix;\n    mat4 mvMatrix;\n    \n    texCoordOrig=attrTexCoord;\n    texCoord=attrTexCoord;\n    #ifdef HAS_TEXTURES\n        #ifdef TEXTURE_REPEAT\n            texCoord.x=texCoord.x*diffuseRepeatX+texOffsetX;\n            texCoord.y=texCoord.y*diffuseRepeatY+texOffsetY;\n        #endif\n    #endif\n\n    vec4 pos = vec4( vPosition, 1. );\n\n\n    #ifdef BILLBOARD\n       vec3 position=vPosition;\n       mvMatrix=viewMatrix*modelMatrix;\n\n       gl_Position = projMatrix * mvMatrix * vec4((\n           position.x * vec3(\n               mvMatrix[0][0],\n               mvMatrix[1][0],\n               mvMatrix[2][0] ) +\n           position.y * vec3(\n               mvMatrix[0][1],\n               mvMatrix[1][1],\n               mvMatrix[2][1]) ), 1.0);\n    #endif\n\n    {{MODULE_VERTEX_POSITION}}\n\n    #ifndef BILLBOARD\n        mvMatrix=viewMatrix * mMatrix;\n    #endif\n\n\n    #ifndef BILLBOARD\n        // gl_Position = projMatrix * viewMatrix * modelMatrix * pos;\n        gl_Position = projMatrix * mvMatrix * pos;\n    #endif\n}\n";
-const render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION) );
-const trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-const shaderOut=op.addOutPort(new Port(op,"shader",OP_PORT_TYPE_OBJECT));
-shaderOut.ignoreValueSerialize=true;
-
-const cgl=op.patch.cgl;
-
-
-var shader=new CGL.Shader(cgl,'BasicMaterial');
-shader.setModules(['MODULE_VERTEX_POSITION','MODULE_COLOR','MODULE_BEGIN_FRAG']);
-shader.bindTextures=bindTextures;
-shader.setSource(attachments.shader_vert,attachments.shader_frag);
-shaderOut.set(shader);
-
-render.onTriggered=doRender;
-
-
-
-
-function bindTextures()
-{
-    if(diffuseTexture.get())
-    {
-        cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-        cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, diffuseTexture.get().tex);
-    }
-
-    if(op.textureOpacity.get())
-    {
-        cgl.gl.activeTexture(cgl.gl.TEXTURE1);
-        cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, op.textureOpacity.get().tex);
-    }
-}
-
-op.preRender=function()
-{
-    shader.bind();
-    doRender();
-};
-
-function doRender()
-{
-    if(!shader)return;
-
-    cgl.setShader(shader);
-    shader.bindTextures();
-
-    trigger.trigger();
-
-    cgl.setPreviousShader();
-}
-
-
-{
-    // rgba colors
-    
-    var r=op.addInPort(new Port(op,"r",OP_PORT_TYPE_VALUE,{ display:'range',colorPick:'true' }));
-    r.set(Math.random());
-    r.uniform=new CGL.Uniform(shader,'f','r',r);
-    
-    var g=op.addInPort(new Port(op,"g",OP_PORT_TYPE_VALUE,{ display:'range'}));
-    g.set(Math.random());
-    g.uniform=new CGL.Uniform(shader,'f','g',g);
-    
-    var b=op.addInPort(new Port(op,"b",OP_PORT_TYPE_VALUE,{ display:'range' }));
-    b.set(Math.random());
-    b.uniform=new CGL.Uniform(shader,'f','b',b);
-    
-    var a=op.addInPort(new Port(op,"a",OP_PORT_TYPE_VALUE,{ display:'range'}));
-    a.uniform=new CGL.Uniform(shader,'f','a',a);
-    a.set(1.0);
-    
-}
-
-{
-    // diffuse outTexture
-    
-    var diffuseTexture=this.addInPort(new Port(this,"texture",OP_PORT_TYPE_TEXTURE,{preview:true,display:'createOpHelper'}));
-    var diffuseTextureUniform=null;
-    shader.bindTextures=bindTextures;
-    
-    diffuseTexture.onChange=function()
-    {
-        if(diffuseTexture.get())
-        {
-            // if(diffuseTextureUniform!==null)return;
-            // shader.addveUniform('texDiffuse');
-            if(!shader.hasDefine('HAS_TEXTURE_DIFFUSE'))shader.define('HAS_TEXTURE_DIFFUSE');
-            if(!diffuseTextureUniform)diffuseTextureUniform=new CGL.Uniform(shader,'t','texDiffuse',0);
-            updateTexRepeat();
-        }
-        else
-        {
-            shader.removeUniform('texDiffuse');
-            shader.removeDefine('HAS_TEXTURE_DIFFUSE');
-            diffuseTextureUniform=null;
-        }
-    };
-    
-}
-
-{
-    // opacity texture 
-    op.textureOpacity=op.addInPort(new Port(op,"textureOpacity",OP_PORT_TYPE_TEXTURE,{preview:true,display:'createOpHelper'}));
-    op.textureOpacityUniform=null;
-    
-    op.textureOpacity.onChange=function()
-    {
-        if(op.textureOpacity.get())
-        {
-            if(op.textureOpacityUniform!==null)return;
-            shader.removeUniform('texOpacity');
-            shader.define('HAS_TEXTURE_OPACITY');
-            if(!op.textureOpacityUniform)op.textureOpacityUniform=new CGL.Uniform(shader,'t','texOpacity',1);
-        }
-        else
-        {
-            shader.removeUniform('texOpacity');
-            shader.removeDefine('HAS_TEXTURE_OPACITY');
-            op.textureOpacityUniform=null;
-        }
-    };
-    
-}
-
-op.colorizeTexture=op.addInPort(new Port(op,"colorizeTexture",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-op.colorizeTexture.set(false);
-op.colorizeTexture.onChange=function()
-{
-    if(op.colorizeTexture.get()) shader.define('COLORIZE_TEXTURE');
-        else shader.removeDefine('COLORIZE_TEXTURE');
-};
-
-
-op.doBillboard=op.addInPort(new Port(op,"billboard",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-op.doBillboard.set(false);
-op.doBillboard.onChange=function()
-{
-    if(op.doBillboard.get()) shader.define('BILLBOARD');
-        else shader.removeDefine('BILLBOARD');
-};
-
-var texCoordAlpha=op.inValueBool("Opacity TexCoords Transform",false);
-
-texCoordAlpha.onChange=function()
-{
-    if(texCoordAlpha.get()) shader.define('TRANSFORMALPHATEXCOORDS');
-        else shader.removeDefine('TRANSFORMALPHATEXCOORDS');
-    
-};
-
-var preMultipliedAlpha=op.addInPort(new Port(op,"preMultiplied alpha",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-
-function updateTexRepeat()
-{
-    if(!diffuseRepeatXUniform)
-    {
-        diffuseRepeatXUniform=new CGL.Uniform(shader,'f','diffuseRepeatX',diffuseRepeatX);
-        diffuseRepeatYUniform=new CGL.Uniform(shader,'f','diffuseRepeatY',diffuseRepeatY);
-        diffuseOffsetXUniform=new CGL.Uniform(shader,'f','texOffsetX',diffuseOffsetX);
-        diffuseOffsetYUniform=new CGL.Uniform(shader,'f','texOffsetY',diffuseOffsetY);
-    }
-
-    diffuseRepeatXUniform.setValue(diffuseRepeatX.get());
-    diffuseRepeatYUniform.setValue(diffuseRepeatY.get());
-    diffuseOffsetXUniform.setValue(diffuseOffsetX.get());
-    diffuseOffsetYUniform.setValue(diffuseOffsetY.get());
-}
-
-
-{
-    // texture coords
-    
-    var diffuseRepeatX=op.addInPort(new Port(op,"diffuseRepeatX",OP_PORT_TYPE_VALUE));
-    var diffuseRepeatY=op.addInPort(new Port(op,"diffuseRepeatY",OP_PORT_TYPE_VALUE));
-    var diffuseOffsetX=op.addInPort(new Port(op,"Tex Offset X",OP_PORT_TYPE_VALUE));
-    var diffuseOffsetY=op.addInPort(new Port(op,"Tex Offset Y",OP_PORT_TYPE_VALUE));
-    
-    diffuseRepeatX.onChange=updateTexRepeat;
-    diffuseRepeatY.onChange=updateTexRepeat;
-    diffuseOffsetY.onChange=updateTexRepeat;
-    diffuseOffsetX.onChange=updateTexRepeat;
-    
-    var diffuseRepeatXUniform=null;
-    var diffuseRepeatYUniform=null;
-    var diffuseOffsetXUniform=null;
-    var diffuseOffsetYUniform=null;
-    
-    shader.define('TEXTURE_REPEAT');
-    
-
-    diffuseOffsetX.set(0);
-    diffuseOffsetY.set(0);
-    diffuseRepeatX.set(1);
-    diffuseRepeatY.set(1);
-}
-
-
-};
-
-Ops.Gl.Shader.BasicMaterial.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.Meshes.FullscreenRectangle
-// 
-// **************************************************************
-
-Ops.Gl.Meshes.FullscreenRectangle = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-attachments["shader_frag"]="\nUNI sampler2D tex;\nIN vec2 texCoord;\n\nprecision highp float;\n\nvoid main()\n{\n   gl_FragColor = texture2D(tex,vec2(texCoord.x,(1.0-texCoord.y)));\n}\n";
-attachments["shader_vert"]="{{MODULES_HEAD}}\n\nIN vec3 vPosition;\nUNI mat4 projMatrix;\nUNI mat4 mvMatrix;\n\nOUT vec2 texCoord;\nIN vec2 attrTexCoord;\n\nvoid main()\n{\n   vec4 pos=vec4(vPosition,  1.0);\n\n   texCoord=attrTexCoord;\n\n\n   gl_Position = projMatrix * mvMatrix * pos;\n}\n";
-
-
-var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-var centerInCanvas=op.addInPort(new Port(op,"Center in Canvas",OP_PORT_TYPE_VALUE,{display:'bool'}));
-var flipY=op.inValueBool("Flip Y");
-
-var inTexture=op.inTexture("Texture");
-
-
-var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-
-var cgl=op.patch.cgl;
+var mod=null;
 var mesh=null;
-var geom=new CGL.Geometry("fullscreen rectangle");
-var x=0,y=0,z=0,w=0,h=0;
-
-centerInCanvas.onChange=rebuild;
-flipY.onChange=rebuild;
-
 var shader=null;
-render.onTriggered=doRender;
+var uniDoInstancing=null;
+var recalc=true;
+var cgl=op.patch.cgl;
 
-inTexture.onChange=function()
-{
-    var tex=inTexture.get();
-    // shader=null;
-    if(tex && !shader)
-    {
-        shader=new CGL.Shader(cgl,'fullscreenrectangle');
-        shader.setModules(['MODULE_VERTEX_POSITION','MODULE_COLOR','MODULE_BEGIN_FRAG']);
+exe.onTriggered=doRender;
+exe.onLinkChanged=removeModule;
 
-        shader.setSource(attachments.shader_vert,attachments.shader_frag);
-        shader.fullscreenRectUniform=new CGL.Uniform(shader,'t','tex',0);
-    }
+var matrixArray= new Float32Array(1);
+var m=mat4.create();
+inTransformations.onChange=reset;
+inScales.onChange=reset;
+
+
+var srcHeadVert=''
+    .endl()+'UNI float do_instancing;'
+    .endl()+'UNI float MOD_scale;'
     
-    if(!tex)
+    .endl()+'#ifdef INSTANCING'
+    .endl()+'   IN mat4 instMat;'
+    .endl()+'   OUT mat4 instModelMat;'
+    .endl()+'#endif';
+
+var srcBodyVert=''
+    .endl()+'#ifdef INSTANCING'
+    .endl()+'   if(do_instancing==1.0)'
+    .endl()+'   {'
+    .endl()+'       mMatrix*=instMat;'
+    .endl()+'       mMatrix[0][0]*=MOD_scale;'
+    .endl()+'       mMatrix[1][1]*=MOD_scale;'
+    .endl()+'       mMatrix[2][2]*=MOD_scale;'
+    .endl()+'   }'
+    .endl()+'#endif'
+    .endl();
+
+
+
+geom.onChange=function()
+{
+    if(!geom.get())
     {
+        mesh=null;
+        return;
+    }
+    mesh=new CGL.Mesh(cgl,geom.get());
+    reset();
+};
+
+function removeModule()
+{
+    if(shader && mod)
+    {
+        shader.removeDefine('INSTANCING');
+        shader.removeModule(mod);
         shader=null;
     }
-};
+}
 
-op.preRender=function()
+function reset()
 {
-    if(shader)shader.bind();
-    if(mesh)mesh.render(shader);
-    doRender();
+    recalc=true;
+}
+
+function setupArray()
+{
+    if(!mesh)return;
     
-};
-
-function doRender()
-{
-    if( cgl.getViewPort()[2]!=w || cgl.getViewPort()[3]!=h )
+    var transforms=inTransformations.get();
+    if(!transforms)
     {
-        rebuild();
+        transforms=[0,0,0];
     }
-
-    cgl.pushPMatrix();
-    mat4.identity(cgl.pMatrix);
-    mat4.ortho(cgl.pMatrix, 0, w,h, 0, -10.0, 1000);
-
-    cgl.pushModelMatrix();
-    mat4.identity(cgl.mvMatrix);
-
-    cgl.pushViewMatrix();
-    mat4.identity(cgl.vMatrix);
-
-    if(centerInCanvas.get())
-    {
-        var x=0;
-        var y=0;
-        if(w<cgl.canvasWidth) x=(cgl.canvasWidth-w)/2;
-        if(h<cgl.canvasHeight) y=(cgl.canvasHeight-h)/2;
-
-        cgl.setViewPort(x,y,w,h);
-    }
-
-    if(shader)
-    {
-        if(inTexture.get())
-        {
-            cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-            cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, inTexture.get().tex);
-        }
-
-        mesh.render(shader);
-    }
-    else
-    {
-        mesh.render(cgl.getShader());
-    }
-
-    cgl.gl.clear(cgl.gl.DEPTH_BUFFER_BIT);
-
-    cgl.popPMatrix();
-    cgl.popModelMatrix();
-    cgl.popViewMatrix();
-
-    trigger.trigger();
-}
-
-
-function rebuild()
-{
-
-    var currentViewPort=cgl.getViewPort();
-    if(currentViewPort[2]==w && currentViewPort[3]==h)return;
-
-    var xx=0,xy=0;
-
-    w=currentViewPort[2];
-    h=currentViewPort[3];
-
-    geom.vertices = new Float32Array([
-         xx+w, xy+h,  0.0,
-         xx,   xy+h,  0.0,
-         xx+w, xy,    0.0,
-         xx,   xy,    0.0
-    ]);
-
-    if(flipY.get())
-        geom.setTexCoords( new Float32Array([
-             1.0, 0.0,
-             0.0, 0.0,
-             1.0, 1.0,
-             0.0, 1.0
-        ]));
-    else
-        geom.setTexCoords(new Float32Array([
-             1.0, 1.0,
-             0.0, 1.0,
-             1.0, 0.0,
-             0.0, 0.0
-        ]));
-
-    geom.verticesIndices = new Float32Array([
-        0, 1, 2,
-        3, 1, 2
-    ]);
-
-
-    if(!mesh) mesh=new CGL.Mesh(cgl,geom);
-        else mesh.setGeom(geom);
-}
-
-
-};
-
-Ops.Gl.Meshes.FullscreenRectangle.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.TextureEffects.ImageCompose
-// 
-// **************************************************************
-
-Ops.Gl.TextureEffects.ImageCompose = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-const render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-const useVPSize=op.addInPort(new Port(op,"use viewport size",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-const width=op.inValueInt("width");
-const height=op.inValueInt("height");
-
-const tfilter=op.inValueSelect("filter",['nearest','linear','mipmap'],"linear");
-const twrap=op.inValueSelect("wrap",['clamp to edge','repeat','mirrored repeat']);
-const bgAlpha=op.inValueSlider("Background Alpha",1);
-const fpTexture=op.inValueBool("HDR");
-
-const trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-const texOut=op.outTexture("texture_out");
-
-const outRatio=op.outValue("Aspect Ratio");
-
-texOut.set(null);
-var cgl=op.patch.cgl;
-var effect=null;
-var tex=null;
-
-var w=8,h=8;
-var prevViewPort=[0,0,0,0];
-var reInitEffect=true;
-
-var bgFrag=''
-    .endl()+'uniform float a;'
-    .endl()+'void main()'
-    .endl()+'{'
-    .endl()+'   gl_FragColor = vec4(0.0,0.0,0.0,a);'
-    .endl()+'}';
-var bgShader=new CGL.Shader(cgl,'imgcompose bg');
-bgShader.setSource(bgShader.getDefaultVertexShader(),bgFrag);
-var uniBgAlpha=new CGL.Uniform(bgShader,'f','a',bgAlpha);
-
-var selectedFilter=CGL.Texture.FILTER_LINEAR;
-var selectedWrap=CGL.Texture.WRAP_CLAMP_TO_EDGE;
-
-function initEffect()
-{
-    if(effect)effect.delete();
-    if(tex)tex.delete();
-
-    effect=new CGL.TextureEffect(cgl,{"isFloatingPointTexture":fpTexture.get()});
-
-    tex=new CGL.Texture(cgl,
-        {
-            "isFloatingPointTexture":fpTexture.get(),
-            "filter":selectedFilter,
-            "wrap":selectedWrap,
-            "width": Math.ceil(width.get()),
-            "height": Math.ceil(height.get()),
-        });
-
-    effect.setSourceTexture(tex);
-    texOut.set(null);
-    // texOut.set(effect.getCurrentSourceTexture());
-
-    reInitEffect=false;
-
-    // op.log("reinit effect");
-    // tex.printInfo();
-}
-
-fpTexture.onChange=function()
-{
-    reInitEffect=true;
-};
-
-
-function updateResolution()
-{
-    if(!effect)initEffect();
-
-    if(useVPSize.get())
-    {
-        w=cgl.getViewPort()[2];
-        h=cgl.getViewPort()[3];
-    }
-    else
-    {
-        w=Math.ceil(width.get());
-        h=Math.ceil(height.get());
-    }
-
-    if((w!=tex.width || h!= tex.height) && (w!==0 && h!==0))
-    {
-        height.set(h);
-        width.set(w);
-        tex.filter=CGL.Texture.FILTER_LINEAR;
-        tex.setSize(w,h);
-        outRatio.set(w/h);
-        effect.setSourceTexture(tex);
-    }
-
-    if(texOut.get())
-        if(!texOut.get().isPowerOfTwo() )
-        {
-            if(!op.uiAttribs.hint)
-                op.uiAttr(
-                    {
-                        hint:'texture dimensions not power of two! - texture filtering will not work.',
-                        warning:null
-                    });
-        }
-        else
-        if(op.uiAttribs.hint)
-        {
-            op.uiAttr({hint:null,warning:null}); //todo only when needed...
-        }
-
-}
-
-
-function updateSizePorts()
-{
-    if(useVPSize.get())
-    {
-        width.setUiAttribs({hidePort:true,greyout:true});
-        height.setUiAttribs({hidePort:true,greyout:true});
-    }
-    else
-    {
-        width.setUiAttribs({hidePort:false,greyout:false});
-        height.setUiAttribs({hidePort:false,greyout:false});
-    }
-}
-
-
-useVPSize.onValueChanged=function()
-{
-    updateSizePorts();
-    if(useVPSize.get())
-    {
-        width.onValueChanged=null;
-        height.onValueChanged=null;
-    }
-    else
-    {
-        width.onValueChanged=updateResolution;
-        height.onValueChanged=updateResolution;
-    }
-    updateResolution();
+    var num=Math.floor(transforms.length/3);
     
-};
+    
+    var scales=inScales.get();
+    // console.log('scales',scales);
+    // console.log('setup array!');
 
-
-op.preRender=function()
-{
-    doRender();
-    bgShader.bind();
-};
-
-
-var doRender=function()
-{
-    if(!effect || reInitEffect)
+    if(matrixArray.length!=num*16)
     {
-        initEffect();
-    }
-    var vp=cgl.getViewPort();
-    prevViewPort[0]=vp[0];
-    prevViewPort[1]=vp[1];
-    prevViewPort[2]=vp[2];
-    prevViewPort[3]=vp[3];
-
-
-    cgl.gl.blendFunc(cgl.gl.SRC_ALPHA, cgl.gl.ONE_MINUS_SRC_ALPHA);
-    // cgl.gl.blendFunc(cgl.gl.SRC_ALPHA,cgl.gl.ONE_MINUS_SRC_ALPHA);
-
-
-
-    updateResolution();
-
-    cgl.currentTextureEffect=effect;
-    effect.setSourceTexture(tex);
-
-    effect.startEffect();
-
-    // render background color...
-    cgl.setShader(bgShader);
-    cgl.currentTextureEffect.bind();
-    cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-    cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, cgl.currentTextureEffect.getCurrentSourceTexture().tex );
-    cgl.currentTextureEffect.finish();
-    cgl.setPreviousShader();
-
-    trigger.trigger();
-
-    texOut.set(effect.getCurrentSourceTexture());
-    // texOut.set(effect.getCurrentTargetTexture());
-
-    effect.endEffect();
-
-    cgl.setViewPort(prevViewPort[0],prevViewPort[1],prevViewPort[2],prevViewPort[3]);
-
-
-    cgl.gl.blendFunc(cgl.gl.SRC_ALPHA,cgl.gl.ONE_MINUS_SRC_ALPHA);
-
-    cgl.currentTextureEffect=null;
-};
-
-
-function onWrapChange()
-{
-    if(twrap.get()=='repeat') selectedWrap=CGL.Texture.WRAP_REPEAT;
-    if(twrap.get()=='mirrored repeat') selectedWrap=CGL.Texture.WRAP_MIRRORED_REPEAT;
-    if(twrap.get()=='clamp to edge') selectedWrap=CGL.Texture.WRAP_CLAMP_TO_EDGE;
-
-    reInitEffect=true;
-    updateResolution();
-}
-
-twrap.set('clamp to edge');
-twrap.onValueChanged=onWrapChange;
-
-function onFilterChange()
-{
-    if(tfilter.get()=='nearest') selectedFilter=CGL.Texture.FILTER_NEAREST;
-    if(tfilter.get()=='linear')  selectedFilter=CGL.Texture.FILTER_LINEAR;
-    if(tfilter.get()=='mipmap')  selectedFilter=CGL.Texture.FILTER_MIPMAP;
-
-    reInitEffect=true;
-    updateResolution();
-    // effect.setSourceTexture(tex);
-    // updateResolution();
-}
-
-tfilter.set('linear');
-tfilter.onValueChanged=onFilterChange;
-
-useVPSize.set(true);
-render.onTriggered=doRender;
-
-width.set(640);
-height.set(360);
-updateSizePorts();
-
-};
-
-Ops.Gl.TextureEffects.ImageCompose.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.TextureEffects.DrawImage
-// 
-// **************************************************************
-
-Ops.Gl.TextureEffects.DrawImage = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-attachments["drawimage_frag"]="#ifdef HAS_TEXTURES\n  IN vec2 texCoord;\n  UNI sampler2D tex;\n  UNI sampler2D image;\n#endif\n\nIN mat3 transform;\nUNI float rotate;\n{{BLENDCODE}}\n\n#ifdef HAS_TEXTUREALPHA\n   UNI sampler2D imageAlpha;\n#endif\n\nUNI float amount;\n\nvoid main()\n{\n   vec4 blendRGBA=vec4(0.0,0.0,0.0,1.0);\n   #ifdef HAS_TEXTURES\n       vec2 tc=texCoord;\n\n       #ifdef TEX_FLIP_X\n           tc.x=1.0-tc.x;\n       #endif\n       #ifdef TEX_FLIP_Y\n           tc.y=1.0-tc.y;\n       #endif\n\n       #ifdef TEX_TRANSFORM\n           vec3 coordinates=vec3(tc.x, tc.y,1.0);\n           tc=(transform * coordinates ).xy;\n       #endif\n\n       blendRGBA=texture2D(image,tc);\n\n       vec3 blend=blendRGBA.rgb;\n       vec4 baseRGBA=texture2D(tex,texCoord);\n       vec3 base=baseRGBA.rgb;\n\n       vec3 colNew=_blend(base,blend);\n\n       #ifdef REMOVE_ALPHA_SRC\n           blendRGBA.a=1.0;\n       #endif\n\n       #ifdef HAS_TEXTUREALPHA\n           vec4 colImgAlpha=texture2D(imageAlpha,texCoord);\n           float colImgAlphaAlpha=colImgAlpha.a;\n\n           #ifdef ALPHA_FROM_LUMINANCE\n               vec3 gray = vec3(dot(vec3(0.2126,0.7152,0.0722), colImgAlpha.rgb ));\n               colImgAlphaAlpha=(gray.r+gray.g+gray.b)/3.0;\n           #endif\n\n           blendRGBA.a=colImgAlphaAlpha*blendRGBA.a;\n           \n           #ifdef INVERT_ALPHA\n           blendRGBA.a=1.0-blendRGBA.a;\n           #endif\n       #endif\n\n\n   #endif\n\n   blendRGBA.rgb=mix( colNew, base ,1.0-blendRGBA.a*amount);\n   blendRGBA.a=1.0;\n\n\n   gl_FragColor = blendRGBA;\n}";
-attachments["drawimage_vert"]="IN vec3 vPosition;\nIN vec2 attrTexCoord;\nIN vec3 attrVertNormal;\nOUT vec2 texCoord;\nOUT vec3 norm;\nUNI mat4 projMatrix;\nUNI mat4 mvMatrix;\n\nUNI float posX;\nUNI float posY;\nUNI float scale;\nUNI float rotate;\n\nOUT mat3 transform;\n\nvoid main()\n{\n    texCoord=attrTexCoord;\n    norm=attrVertNormal;\n\n    #ifdef TEX_TRANSFORM\n    vec3 coordinates=vec3(attrTexCoord.x, attrTexCoord.y,1.0);\n    float angle = radians( rotate );\n    vec2 scale= vec2(scale,scale);\n    vec2 translate= vec2(posX,posY);\n\n    transform = mat3(   scale.x * cos( angle ), scale.x * sin( angle ), 0.0,\n                        - scale.y * sin( angle ), scale.y * cos( angle ), 0.0,\n                        - 0.5 * scale.x * cos( angle ) + 0.5 * scale.y * sin( angle ) - 0.5 * translate.x*2.0 + 0.5,  - 0.5 * scale.x * sin( angle ) - 0.5 * scale.y * cos( angle ) - 0.5 * translate.y*2.0 + 0.5, 1.0);\n    #endif\n\n    gl_Position = projMatrix * mvMatrix * vec4(vPosition,  1.0);\n}";
-var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-var amount=op.addInPort(new Port(op,"amount",OP_PORT_TYPE_VALUE,{ display:'range' }));
-
-var image=op.addInPort(new Port(op,"image",OP_PORT_TYPE_TEXTURE,{preview:true }));
-var blendMode=CGL.TextureEffect.AddBlendSelect(op,"blendMode");
-
-var imageAlpha=op.addInPort(new Port(op,"imageAlpha",OP_PORT_TYPE_TEXTURE,{preview:true }));
-var alphaSrc=op.inValueSelect("alphaSrc",['alpha channel','luminance']);
-var removeAlphaSrc=op.addInPort(new Port(op,"removeAlphaSrc",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-
-var invAlphaChannel=op.addInPort(new Port(op,"invert alpha channel",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-
-
-var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-
-blendMode.set('normal');
-var cgl=op.patch.cgl;
-var shader=new CGL.Shader(cgl,'drawimage');
-
-amount.set(1.0);
-
-
-
-
-var srcFrag=attachments.drawimage_frag.replace('{{BLENDCODE}}',CGL.TextureEffect.getBlendCode());
-
-
-shader.setSource(attachments.drawimage_vert,srcFrag);
-var textureUniform=new CGL.Uniform(shader,'t','tex',0);
-var textureDisplaceUniform=new CGL.Uniform(shader,'t','image',1);
-var textureAlpha=new CGL.Uniform(shader,'t','imageAlpha',2);
-
-invAlphaChannel.onValueChanged=function()
-{
-    if(invAlphaChannel.get()) shader.define('INVERT_ALPHA');
-        else shader.removeDefine('INVERT_ALPHA');
-};
-
-removeAlphaSrc.onValueChanged=function()
-{
-    if(removeAlphaSrc.get()) shader.define('REMOVE_ALPHA_SRC');
-        else shader.removeDefine('REMOVE_ALPHA_SRC');
-};
-removeAlphaSrc.set(true);
-
-alphaSrc.onValueChanged=function()
-{
-    if(alphaSrc.get()=='luminance') shader.define('ALPHA_FROM_LUMINANCE');
-        else shader.removeDefine('ALPHA_FROM_LUMINANCE');
-};
-
-alphaSrc.set("alpha channel");
-
-
-{
-    //
-    // texture flip
-    //
-    var flipX=op.addInPort(new Port(op,"flip x",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-    var flipY=op.addInPort(new Port(op,"flip y",OP_PORT_TYPE_VALUE,{ display:'bool' }));
-
-    flipX.onValueChanged=function()
-    {
-        if(flipX.get()) shader.define('TEX_FLIP_X');
-            else shader.removeDefine('TEX_FLIP_X');
-    };
-
-    flipY.onValueChanged=function()
-    {
-        if(flipY.get()) shader.define('TEX_FLIP_Y');
-            else shader.removeDefine('TEX_FLIP_Y');
-    };
-}
-
-{
-    //
-    // texture transform
-    //
-    var scale=op.addInPort(new Port(op,"scale",OP_PORT_TYPE_VALUE,{ display:'range' }));
-    var posX=op.addInPort(new Port(op,"pos x",OP_PORT_TYPE_VALUE, {}));
-    var posY=op.addInPort(new Port(op,"pos y",OP_PORT_TYPE_VALUE, {}));
-    var rotate=op.addInPort(new Port(op,"rotate",OP_PORT_TYPE_VALUE, {}));
-
-    scale.set(1.0);
-
-    var uniScale=new CGL.Uniform(shader,'f','scale',scale.get());
-    var uniPosX=new CGL.Uniform(shader,'f','posX',posX.get());
-    var uniPosY=new CGL.Uniform(shader,'f','posY',posY.get());
-    var uniRotate=new CGL.Uniform(shader,'f','rotate',rotate.get());
-
-    function updateTransform()
-    {
-        if(scale.get()!=1.0 || posX.get()!=0.0 || posY.get()!=0.0 || rotate.get()!=0.0 )
-        {
-            if(!shader.hasDefine('TEX_TRANSFORM')) shader.define('TEX_TRANSFORM');
-            uniScale.setValue( parseFloat(scale.get()) );
-            uniPosX.setValue( posX.get() );
-            uniPosY.setValue( posY.get() );
-            uniRotate.setValue( rotate.get() );
-        }
-        else
-        {
-            // shader.removeDefine('TEX_TRANSFORM');
-        }
+        matrixArray=new Float32Array(num*16);
     }
 
-    scale.onChange=updateTransform;
-    posX.onChange=updateTransform;
-    posY.onChange=updateTransform;
-    rotate.onChange=updateTransform;
-}
-
-blendMode.onValueChanged=function()
-{
-    CGL.TextureEffect.onChangeBlendSelect(shader,blendMode.get());
-};
-
-
-var amountUniform=new CGL.Uniform(shader,'f','amount',amount);
-
-var oldHadImageAlpha=false;
-
-
-function doRender()
-{
-    if(!CGL.TextureEffect.checkOpInEffect(op)) return;
-
-
-    if(imageAlpha.get() && !oldHadImageAlpha || !imageAlpha.get() && oldHadImageAlpha)
+    for(var i=0;i<num;i++)
     {
-        if(imageAlpha.get() && imageAlpha.get().tex)
-        {
-            shader.define('HAS_TEXTUREALPHA');
-            oldHadImageAlpha=true;
-        }
-        else
-        {
-            shader.removeDefine('HAS_TEXTUREALPHA');
-            oldHadImageAlpha=false;
-        }
+        mat4.identity(m);
+        mat4.translate(m,m,
+            [
+                transforms[i*3],
+                transforms[i*3+1],
+                transforms[i*3+2]
+            ]);
         
-    }
-
-
-
-    if(image.get() && image.get().tex && amount.get()>0.0)
-    {
-        cgl.setShader(shader);
-        cgl.currentTextureEffect.bind();
-
-        cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-        cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, cgl.currentTextureEffect.getCurrentSourceTexture().tex );
-
-        cgl.gl.activeTexture(cgl.gl.TEXTURE1);
-        if(image.get() && image.get().tex) cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, image.get().tex );
-            else cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, null);
-
-        cgl.gl.activeTexture(cgl.gl.TEXTURE2);
-        if(imageAlpha.get() && imageAlpha.get().tex) cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, imageAlpha.get().tex );
-            else cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, null);
-
-        cgl.currentTextureEffect.finish();
-        cgl.setPreviousShader();
-    }
-
-    trigger.trigger();
-}
-
-render.onTriggered=doRender;
-
-
-};
-
-Ops.Gl.TextureEffects.DrawImage.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.TextureEffects.Blur
-// 
-// **************************************************************
-
-Ops.Gl.TextureEffects.Blur = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-attachments["blur_frag"]="IN vec2 texCoord;\nuniform sampler2D tex;\nuniform float dirX;\nuniform float dirY;\nuniform float amount;\n\n#ifdef HAS_MASK\n    uniform sampler2D imageMask;\n#endif\n\nfloat random(vec3 scale, float seed)\n{\n    return fract(sin(dot(gl_FragCoord.xyz + seed, scale)) * 43758.5453 + seed);\n}\n\nvoid main()\n{\n    vec4 color = vec4(0.0);\n    float total = 0.0;\n\n    float am=amount;\n    #ifdef HAS_MASK\n        am=amount*texture2D(imageMask,texCoord).r;\n        if(am<=0.02)\n        {\n            gl_FragColor=texture2D(tex, texCoord);\n            return;\n        }\n    #endif\n\n   vec2 delta=vec2(dirX*am*0.01,dirY*am*0.01);\n\n\n    \n    float offset = random(vec3(12.9898, 78.233, 151.7182), 0.0);\n\n\n    #ifndef FASTBLUR\n    const float range=20.0;\n    #endif\n    #ifdef FASTBLUR\n    const float range=5.0;\n    #endif\n\n    for (float t = -range; t <= range; t++)\n    {\n        float percent = (t + offset - 0.5) / range;\n        float weight = 1.0 - abs(percent);\n        vec4 smpl = texture2D(tex, texCoord + delta * percent);\n        \n        smpl.rgb *= smpl.a;\n\n        color += smpl * weight;\n        total += weight;\n    }\n\n    gl_FragColor = color / total;\n\n    gl_FragColor.rgb /= gl_FragColor.a + 0.00001;\n}";
-var cgl=op.patch.cgl;
-
-op.name='Blur';
-var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-var fast=op.inValueBool("Fast",true);
-
-
-
-
-var amount=op.addInPort(new Port(op,"amount",OP_PORT_TYPE_VALUE));
-amount.set(10);
-
-var shader=new CGL.Shader(cgl);
-op.onLoaded=shader.compile;
-
-shader.define("FASTBLUR");
-
-fast.onChange=function()
-{
-    if(fast.get()) shader.define("FASTBLUR");
-        else shader.removeDefine("FASTBLUR");
-};
-
-shader.setSource(shader.getDefaultVertexShader(),attachments.blur_frag);
-var textureUniform=new CGL.Uniform(shader,'t','tex',0);
-
-var uniDirX=new CGL.Uniform(shader,'f','dirX',0);
-var uniDirY=new CGL.Uniform(shader,'f','dirY',0);
-
-var uniWidth=new CGL.Uniform(shader,'f','width',0);
-var uniHeight=new CGL.Uniform(shader,'f','height',0);
-
-var uniAmount=new CGL.Uniform(shader,'f','amount',amount.get());
-amount.onValueChange(function(){ uniAmount.setValue(amount.get()); });
-
-var textureAlpha=new CGL.Uniform(shader,'t','imageMask',1);
-
-
-var direction=op.addInPort(new Port(op,"direction",OP_PORT_TYPE_VALUE,{display:'dropdown',values:['both','vertical','horizontal']}));
-var dir=0;
-direction.set('both');
-direction.onValueChange(function()
-{
-    if(direction.get()=='both')dir=0;
-    if(direction.get()=='horizontal')dir=1;
-    if(direction.get()=='vertical')dir=2;
-});
-
-var mask=op.addInPort(new Port(op,"mask",OP_PORT_TYPE_TEXTURE,{preview:true }));
-
-mask.onValueChanged=function()
-{
-    if(mask.get() && mask.get().tex) shader.define('HAS_MASK');
-        else shader.removeDefine('HAS_MASK');
-};
-
-
-
-render.onTriggered=function()
-{
-    if(!CGL.TextureEffect.checkOpInEffect(op)) return;
-
-    cgl.setShader(shader);
-
-    uniWidth.setValue(cgl.currentTextureEffect.getCurrentSourceTexture().width);
-    uniHeight.setValue(cgl.currentTextureEffect.getCurrentSourceTexture().height);
-
-    // first pass
-    if(dir===0 || dir==2)
-    {
-
-        cgl.currentTextureEffect.bind();
-        cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-        cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, cgl.currentTextureEffect.getCurrentSourceTexture().tex );
-
-        if(mask.get() && mask.get().tex)
+        if(scales && scales.length>i)
         {
-            cgl.gl.activeTexture(cgl.gl.TEXTURE1);
-            cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, mask.get().tex );
+            mat4.scale(m,m,[scales[i],scales[i],scales[i]]);
+            // console.log('scale',scales[i]);
+        }
+        else
+        {
+            mat4.scale(m,m,[1,1,1]);
         }
 
-
-        uniDirX.setValue(0.0);
-        uniDirY.setValue(1.0);
-
-        cgl.currentTextureEffect.finish();
+        for(var a=0;a<16;a++)
+        {
+            matrixArray[i*16+a]=m[a];
+        }
     }
 
-    // second pass
-    if(dir===0 || dir==1)
+    mesh.numInstances=num;
+    mesh.addAttribute('instMat',matrixArray,16);
+    recalc=false;
+}
+
+function doRender()
+{
+    if(recalc)setupArray();
+    if(matrixArray.length<=1)return;
+    if(!mesh) return;
+
+    if(cgl.getShader() && cgl.getShader()!=shader)
     {
-
-        cgl.currentTextureEffect.bind();
-        cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-        cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, cgl.currentTextureEffect.getCurrentSourceTexture().tex );
-
-        if(mask.get() && mask.get().tex)
+        if(shader && mod)
         {
-            cgl.gl.activeTexture(cgl.gl.TEXTURE1);
-            cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, mask.get().tex );
+            shader.removeModule(mod);
+            shader=null;
         }
 
-        uniDirX.setValue(1.0);
-        uniDirY.setValue(0.0);
+        shader=cgl.getShader();
+        if(!shader.hasDefine('INSTANCING'))
+        {
+            mod=shader.addModule(
+                {
+                    name: 'MODULE_VERTEX_POSITION',
+                    priority:-2,
+                    srcHeadVert: srcHeadVert,
+                    srcBodyVert: srcBodyVert
+                });
 
-        cgl.currentTextureEffect.finish();
+            shader.define('INSTANCING');
+            uniDoInstancing=new CGL.Uniform(shader,'f','do_instancing',0);
+            inScale.uniform=new CGL.Uniform(shader,'f',mod.prefix+'scale',inScale);
+        }
+        else
+        {
+            uniDoInstancing=shader.getUniform('do_instancing');
+        }
     }
 
-    cgl.setPreviousShader();
-    trigger.trigger();
-};
+    uniDoInstancing.setValue(1);
+    mesh.render(shader);
+    uniDoInstancing.setValue(0);
 
-
-};
-
-Ops.Gl.TextureEffects.Blur.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.ClearColor
-// 
-// **************************************************************
-
-Ops.Gl.ClearColor = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-const render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-const trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-const r=op.addInPort(new Port(op,"r",OP_PORT_TYPE_VALUE,{ display:'range', colorPick:'true' }));
-const g=op.inValueSlider("g",0.1);
-const b=op.inValueSlider("b",0.1);
-const a=op.inValueSlider("a",1);
-
-r.set(0.1);
-const cgl=op.patch.cgl;
-
-render.onTriggered=function()
-{
-    cgl.gl.clearColor(r.get(),g.get(),b.get(),a.get());
-    cgl.gl.clear(cgl.gl.COLOR_BUFFER_BIT | cgl.gl.DEPTH_BUFFER_BIT);
-    trigger.trigger();
-};
-
-
-};
-
-Ops.Gl.ClearColor.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.TextureEffects.Vignette
-// 
-// **************************************************************
-
-Ops.Gl.TextureEffects.Vignette = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-attachments["vignette_frag"]="precision highp float;\n#ifdef HAS_TEXTURES\n  IN vec2 texCoord;\n  uniform sampler2D tex;\n#endif\nuniform float lensRadius1;\nuniform float lensRadius2;\nuniform float ratio;\nuniform float amount;\n\nvoid main()\n{\n   vec4 col=vec4(1.0,0.0,0.0,1.0);\n   #ifdef HAS_TEXTURES\n       col=texture2D(tex,texCoord);\n       vec2 tcPos=vec2(texCoord.x,(texCoord.y-0.5)*ratio+0.5);\n       float dist = distance(tcPos, vec2(0.5,0.5))*amount;\n       col.rgb *= smoothstep(lensRadius1, lensRadius2, dist);\n   #endif\n   gl_FragColor = col;\n}";
-op.name='Vignette';
-
-var render=op.inFunction("render");
-var trigger=op.outFunction("trigger");
-
-var amount=op.inValueSlider("Amount",1);
-var lensRadius1=op.inValue("lensRadius1",0.8);
-var lensRadius2=op.inValue("lensRadius2",0.4);
-var ratio=op.inValue("Ratio",1);
-
-var cgl=op.patch.cgl;
-var shader=new CGL.Shader(cgl);
-
-
-shader.setSource(shader.getDefaultVertexShader(),attachments.vignette_frag);
-var textureUniform=new CGL.Uniform(shader,'t','tex',0);
-var uniLensRadius1=new CGL.Uniform(shader,'f','lensRadius1',lensRadius1);
-var uniLensRadius2=new CGL.Uniform(shader,'f','lensRadius2',lensRadius2);
-var uniRatio=new CGL.Uniform(shader,'f','ratio',ratio);
-var uniAmount=new CGL.Uniform(shader,'f','amount',amount);
-
-
-render.onTriggered=function()
-{
-    if(!CGL.TextureEffect.checkOpInEffect(op)) return;
-
-    cgl.setShader(shader);
-    cgl.currentTextureEffect.bind();
-
-    cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-    cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, cgl.currentTextureEffect.getCurrentSourceTexture().tex );
-
-    cgl.currentTextureEffect.finish();
-    cgl.setPreviousShader();
-
-    trigger.trigger();
-};
-
-
-};
-
-Ops.Gl.TextureEffects.Vignette.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.TextureEffects.Circle
-// 
-// **************************************************************
-
-Ops.Gl.TextureEffects.Circle = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-attachments["circle_frag"]="IN vec2 texCoord;\nUNI sampler2D tex;\n\nUNI float amount;\nUNI float size;\nUNI float inner;\nUNI float fadeOut;\n\nUNI float r;\nUNI float g;\nUNI float b;\nUNI float a;\nUNI float aspect;\n    \nUNI float x;\nUNI float y;\n\n{{BLENDCODE}}\n\n\nvoid main()\n{\n   vec4 base=texture2D(tex,texCoord);\n   vec4 col=vec4(0.0,0.0,0.0,1.0);\n    // .endl()+'   float dist = distance(vec2(0.5,0.5),vec2(texCoord.x,texCoord.y/aspect));'\n   float dist = distance(vec2( x,y),vec2(texCoord.x,(texCoord.y-0.5)*aspect)+0.5);\n\n   float sz=size*0.5;\n   float v=0.0;\n   float fade=fadeOut+0.002;\n\n   if(dist<sz && dist>inner*sz) v=1.0;\n\n   #ifdef FALLOFF_SMOOTHSTEP\n       if(dist>sz && dist<sz+fade)v=1.0-(smoothstep(0.0,1.0,(dist-sz)/(fade)) );\n   #endif\n   #ifndef FALLOFF_SMOOTHSTEP\n       if(dist>sz && dist<sz+fade)v=1.0-((dist-sz)/(fade));\n   #endif\n\n   col=vec4( _blend(base.rgb,vec3(r,g,b)) ,1.0);\n   col=vec4( mix( col.rgb, base.rgb ,1.0-base.a*v*amount),1.0);\n\n   gl_FragColor=col;\n\n   #ifdef WARN_OVERFLOW\n       float width=0.01;\n       if( texCoord.x>(1.0-width) || texCoord.y>(1.0-width) || texCoord.y<width || texCoord.x<width )\n           if(v>0.001*amount)gl_FragColor = vec4(1.0,0.0,0.0, 1.0);\n   #endif\n\n}\n";
-op.name="Circle";
-
-var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-
-var blendMode=CGL.TextureEffect.AddBlendSelect(op,"Blend Mode","normal");
-var amount=op.inValueSlider("Amount",1);
-
-
-var inSize=op.addInPort(new Port(op,"size",OP_PORT_TYPE_VALUE,{display:'range'}));
-
-var inInner=op.addInPort(new Port(op,"Inner",OP_PORT_TYPE_VALUE,{display:'range'}));
-
-var inX=op.inValue("Pos X",0.5);
-var inY=op.inValue("Pos Y",0.5);
-
-
-var inFadeOut=op.addInPort(new Port(op,"fade Out",OP_PORT_TYPE_VALUE,{display:'range'}));
-
-var warnOverflow=op.addInPort(new Port(op,"warn overflow",OP_PORT_TYPE_VALUE,{display:'bool'}));
-var fallOff=op.addInPort(new Port(op,"fallOff",OP_PORT_TYPE_VALUE,{display:'dropdown',values:['Linear','SmoothStep']}));
-
-warnOverflow.set(true);
-
-var r=op.addInPort(new Port(op,"r",OP_PORT_TYPE_VALUE,{ display:'range', colorPick:'true'}));
-var g=op.addInPort(new Port(op,"g",OP_PORT_TYPE_VALUE,{ display:'range' }));
-var b=op.addInPort(new Port(op,"b",OP_PORT_TYPE_VALUE,{ display:'range' }));
-var a=op.addInPort(new Port(op,"a",OP_PORT_TYPE_VALUE,{ display:'range' }));
-
-var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-
-var srcFrag=attachments.circle_frag.replace('{{BLENDCODE}}',CGL.TextureEffect.getBlendCode());
-
-var cgl=op.patch.cgl;
-var shader=new CGL.Shader(cgl,'textureeffect stripes');
-shader.setSource(shader.getDefaultVertexShader(),srcFrag);
-var textureUniform=new CGL.Uniform(shader,'t','tex',0);
-var amountUniform=new CGL.Uniform(shader,'f','amount',amount);
-
-var uniSize=new CGL.Uniform(shader,'f','size',inSize);
-var uniFadeOut=new CGL.Uniform(shader,'f','fadeOut',inFadeOut);
-var uniInner=new CGL.Uniform(shader,'f','inner',inInner);
-var aspect=new CGL.Uniform(shader,'f','aspect',1);
-
-
-r.set(1.0);
-g.set(1.0);
-b.set(1.0);
-a.set(1.0);
-
-inSize.set(0.25);
-
-var uniformR=new CGL.Uniform(shader,'f','r',r);
-var uniformG=new CGL.Uniform(shader,'f','g',g);
-var uniformB=new CGL.Uniform(shader,'f','b',b);
-var uniformA=new CGL.Uniform(shader,'f','a',a);
-
-var uniformX=new CGL.Uniform(shader,'f','x',inX);
-var uniformY=new CGL.Uniform(shader,'f','y',inY);
-
-blendMode.onValueChanged=function()
-{
-    CGL.TextureEffect.onChangeBlendSelect(shader,blendMode.get());
-};
-
-function setFallOf()
-{
-    shader.removeDefine('FALLOFF_LINEAR');
-    shader.removeDefine('FALLOFF_SMOOTHSTEP');
-
-    if(fallOff.get()=='Linear') shader.define('FALLOFF_LINEAR');
-    if(fallOff.get()=='SmoothStep') shader.define('FALLOFF_SMOOTHSTEP');
-    shader.compile();
-}
-
-fallOff.onValueChanged=setFallOf;
-
-function setWarnOverflow()
-{
-    if(warnOverflow.get()) shader.define('WARN_OVERFLOW');
-        else shader.removeDefine('WARN_OVERFLOW');
-    shader.compile();
 
 }
 
-warnOverflow.onValueChanged=setWarnOverflow;
-
-
-render.onTriggered=function()
-{
-    if(!cgl.currentTextureEffect)return;
-
-    var a=cgl.currentTextureEffect.getCurrentSourceTexture().height/cgl.currentTextureEffect.getCurrentSourceTexture().width;
-    aspect.set(a);
-
-    cgl.setShader(shader);
-    cgl.currentTextureEffect.bind();
-
-    cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-    cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, cgl.currentTextureEffect.getCurrentSourceTexture().tex );
-
-    cgl.currentTextureEffect.finish();
-    cgl.setPreviousShader();
-
-
-
-    trigger.trigger();
-};
-
-setFallOf();
-setWarnOverflow();
-
 
 };
 
-Ops.Gl.TextureEffects.Circle.prototype = new CABLES.Op();
+Ops.Gl.MeshInstancer.prototype = new CABLES.Op();
 
 //----------------
 
@@ -2371,261 +1247,118 @@ Ops.Gl.TextureEffects.Circle.prototype = new CABLES.Op();
 
 // **************************************************************
 // 
-// Ops.Gl.Perspective
+// Ops.Gl.ShaderEffects.MeshPixelNoise
 // 
 // **************************************************************
 
-Ops.Gl.Perspective = function()
+Ops.Gl.ShaderEffects.MeshPixelNoise = function()
 {
 Op.apply(this, arguments);
 var op=this;
 var attachments={};
-// http://stackoverflow.com/questions/5504635/computing-fovx-opengl
-
-var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-var fovY=op.addInPort(new Port(op,"fov y",OP_PORT_TYPE_VALUE ));
-var zNear=op.addInPort(new Port(op,"frustum near",OP_PORT_TYPE_VALUE ));
-var zFar=op.addInPort(new Port(op,"frustum far",OP_PORT_TYPE_VALUE ));
-var autoAspect=op.inValueBool("Auto Aspect Ratio",true);
-var aspect=op.inValue("Aspect Ratio");
-
-var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-
+attachments["pixelnoise_frag"]="IN vec4 MOD_pos;\n\nfloat MOD_mod289(float x){return x - floor(x * (1.0 / 289.0)) * 289.0;}\nvec4 MOD_mod289(vec4 x){return x - floor(x * (1.0 / 289.0)) * 289.0;}\nvec4 MOD_perm(vec4 x){return MOD_mod289(((x * 34.0) + 1.0) * x);}\n\nfloat MOD_meshPixelNoise(vec3 p){\n    vec3 a = floor(p);\n    vec3 d = p - a;\n    d = d * d * (3.0 - 2.0 * d);\n\n    vec4 b = a.xxyy + vec4(0.0, 1.0, 0.0, 1.0);\n    vec4 k1 = MOD_perm(b.xyxy);\n    vec4 k2 = MOD_perm(k1.xyxy + b.zzww);\n\n    vec4 c = k2 + a.zzzz;\n    vec4 k3 = MOD_perm(c);\n    vec4 k4 = MOD_perm(c + 1.0);\n\n    vec4 o1 = fract(k3 * (1.0 / 41.0));\n    vec4 o2 = fract(k4 * (1.0 / 41.0));\n\n    vec4 o3 = o2 * d.z + o1 * (1.0 - d.z);\n    vec2 o4 = o3.yw * d.x + o3.xz * (1.0 - d.x);\n\n    return o4.y * d.y + o4.x * (1.0 - d.y);\n}\n";
 
 var cgl=op.patch.cgl;
-zNear.set(0.01);
-fovY.set(45);
-zFar.set(500.0);
+var id='mod'+Math.floor(Math.random()*10000);
 
-fovY.onValueChanged=changed;
-zFar.onValueChanged=changed;
-zNear.onValueChanged=changed;
-changed();
+op.render=op.addInPort(new Port(this,"render",OP_PORT_TYPE_FUNCTION));
+op.trigger=op.addOutPort(new Port(this,"trigger",OP_PORT_TYPE_FUNCTION));
 
-var asp=0;
+var inScale=op.inValue("Scale",10);
+var inAmount=op.inValueSlider("Amount",0.3);
+var inWorldSpace=op.inValueBool("WorldSpace");
 
-render.onTriggered=function()
+
+var shader=null;
+
+var srcHeadVert=''
+    .endl()+'OUT vec4 MOD_pos;'
+    .endl();
+
+var srcBodyVert=''
+    .endl()+'#ifndef WORLDSPACE'
+    .endl()+'   MOD_pos=pos;'
+    .endl()+'#endif'
+    .endl()+'#ifdef WORLDSPACE'
+    .endl()+'   MOD_pos=pos*mMatrix;'
+    .endl()+'#endif'
+    .endl();
+
+var srcHeadFrag=attachments.pixelnoise_frag
+    .endl()+'UNI float MOD_scale;'
+    .endl()+'UNI float MOD_amount;'
+    .endl();
+
+var srcBodyFrag=''
+    .endl()+'   col.rgb -= MOD_meshPixelNoise(MOD_pos.xyz*MOD_scale)*MOD_amount/4.0;'
+
+    .endl();
+
+
+var moduleFrag=null;
+var moduleVert=null;
+
+inWorldSpace.onChange=updateWorldspace;
+function updateWorldspace()
 {
-    asp=cgl.getViewPort()[2]/cgl.getViewPort()[3];
-    if(!autoAspect.get())asp=aspect.get();
-    
-    cgl.pushPMatrix();
-    mat4.perspective(
-        cgl.pMatrix,
-        fovY.get()*0.0174533, 
-        asp, 
-        zNear.get(), 
-        zFar.get());
+    if(!shader)return;
+    if(inWorldSpace.get()) shader.define("WORLDSPACE");
+        else shader.removeDefine("WORLDSPACE");
+}
 
-    trigger.trigger();
 
-    cgl.popPMatrix();
-};
-
-function changed()
+function removeModule()
 {
-    cgl.frameStore.perspective=
+    if(shader && moduleFrag) shader.removeModule(moduleFrag);
+    if(shader && moduleVert) shader.removeModule(moduleVert);
+    shader=null;
+}
+
+op.render.onLinkChanged=removeModule;
+
+op.render.onTriggered=function()
+{
+    if(!cgl.getShader())
     {
-        fovy:fovY.get(),
-        zFar:zFar.get(),
-        zNear:zNear.get(),
-    };
-}
-
-
-
-};
-
-Ops.Gl.Perspective.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.TextureEffects.Desaturate
-// 
-// **************************************************************
-
-Ops.Gl.TextureEffects.Desaturate = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-attachments["desaturate_frag"]="\n#ifdef HAS_TEXTURES\n  IN vec2 texCoord;\n  UNI sampler2D tex;\n#endif\nuniform float amount;\n\nvec3 desaturate(vec3 color, float amount)\n{\n   vec3 gray = vec3(dot(vec3(0.2126,0.7152,0.0722), color));\n   return vec3(mix(color, gray, amount));\n}\n\nvoid main()\n{\n   vec4 col=vec4(1.0,0.0,0.0,1.0);\n   #ifdef HAS_TEXTURES\n       col=texture2D(tex,texCoord);\n       col.rgb=desaturate(col.rgb,amount);\n   #endif\n   gl_FragColor = col;\n}";
-op.name='Desaturate';
-
-var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-
-var amount=op.inValueSlider("amount",1);
-
-var cgl=op.patch.cgl;
-var shader=new CGL.Shader(cgl);
-
-shader.setSource(shader.getDefaultVertexShader(),attachments.desaturate_frag);
-var textureUniform=new CGL.Uniform(shader,'t','tex',0);
-var amountUniform=new CGL.Uniform(shader,'f','amount',amount);
-
-render.onTriggered=function()
-{
-    if(!cgl.currentTextureEffect)return;
-
-    cgl.setShader(shader);
-    cgl.currentTextureEffect.bind();
-
-    cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-    cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, cgl.currentTextureEffect.getCurrentSourceTexture().tex );
-
-    cgl.currentTextureEffect.finish();
-    cgl.setPreviousShader();
-
-    trigger.trigger();
-};
-
-
-};
-
-Ops.Gl.TextureEffects.Desaturate.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.TextureEffects.PixelDisplacement
-// 
-// **************************************************************
-
-Ops.Gl.TextureEffects.PixelDisplacement = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-attachments["pixeldisplace_frag"]="\n#ifdef HAS_TEXTURES\n    IN vec2 texCoord;\n    uniform sampler2D tex;\n    uniform sampler2D displaceTex;\n#endif\nuniform float amountX;\nuniform float amountY;\n\nvoid main()\n{\n    vec4 col=vec4(1.0,0.0,0.0,1.0);\n    #ifdef HAS_TEXTURES\n        float mulX=1.0;\n        float mulY=1.0;\n        float x=mod(texCoord.x+mulX*(texture2D(displaceTex,texCoord).g-0.5)*2.0*amountX,1.0);\n        float y=mod(texCoord.y+mulY*(texture2D(displaceTex,texCoord).g-0.5)*2.0*amountY,1.0);\n\n\n        col=texture2D(tex,vec2(x,y) );\n//        col.rgb=desaturate(col.rgb,amount);\n   #endif\n   gl_FragColor = col;\n}";
-op.name='PixelDisplacement';
-
-var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-
-var amount=op.addInPort(new Port(op,"amountX",OP_PORT_TYPE_VALUE,{ display:'range' }));
-var amountY=op.addInPort(new Port(op,"amountY",OP_PORT_TYPE_VALUE,{ display:'range' }));
-
-var displaceTex=op.inTexture("displaceTex");
-var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-
-
-var cgl=op.patch.cgl;
-
-var shader=new CGL.Shader(cgl);
-
-shader.setSource(shader.getDefaultVertexShader(),attachments.pixeldisplace_frag);
-var textureUniform=new CGL.Uniform(shader,'t','tex',0);
-var textureDisplaceUniform=new CGL.Uniform(shader,'t','displaceTex',1);
-
-var amountXUniform=new CGL.Uniform(shader,'f','amountX',amount);
-var amountYUniform=new CGL.Uniform(shader,'f','amountY',amountY);
-
-render.onTriggered=function()
-{
-    if(!cgl.currentTextureEffect)return;
-
-    cgl.setShader(shader);
-    cgl.currentTextureEffect.bind();
-
-    cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-    cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, cgl.currentTextureEffect.getCurrentSourceTexture().tex );
-
-    if(displaceTex.get())
-    {
-        cgl.gl.activeTexture(cgl.gl.TEXTURE1);
-        cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, displaceTex.get().tex );
+         op.trigger.trigger();
+         return;
     }
 
-    cgl.currentTextureEffect.finish();
-    cgl.setPreviousShader();
+    if(cgl.getShader()!=shader)
+    {
+        if(shader) removeModule();
+        shader=cgl.getShader();
 
-    trigger.trigger();
-};
+        moduleVert=shader.addModule(
+            {
+                title:op.objName,
+                name:'MODULE_VERTEX_POSITION',
+                srcHeadVert:srcHeadVert,
+                srcBodyVert:srcBodyVert
+            });
 
+        moduleFrag=shader.addModule(
+            {
+                title:op.objName,
+                name:'MODULE_COLOR',
+                srcHeadFrag:srcHeadFrag,
+                srcBodyFrag:srcBodyFrag
+            },moduleVert);
 
+        inScale.scale=new CGL.Uniform(shader,'f',moduleFrag.prefix+'scale',inScale);
+        inAmount.amount=new CGL.Uniform(shader,'f',moduleFrag.prefix+'amount',inAmount);
+        updateWorldspace();
+    }
 
-};
+    if(!shader)return;
 
-Ops.Gl.TextureEffects.PixelDisplacement.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.TextureEffects.ColorBalance
-// 
-// **************************************************************
-
-Ops.Gl.TextureEffects.ColorBalance = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-attachments["colorbalance_frag"]="\nIN vec2 texCoord;\nUNI sampler2D tex;\nUNI float r;\nUNI float g;\nUNI float b;\n\nfloat lumi(vec3 color)\n{\n   return vec3(dot(vec3(0.2126,0.7152,0.0722), color)).r;\n}\n\nvoid main()\n{\n   vec3 base=texture2D(tex,texCoord).rgb;\n   float l=lumi(base);\n\n   #ifdef TONE_MID\n       l=smoothstep(0.33,0.66,l);\n   #endif\n   \n   #ifdef TONE_LOW\n       l=1.0-l;\n   #endif\n   \n   l=l*l;\n   vec3 color=base+vec3(l*r*0.1,l*g*0.1,l*b*0.1);\n   gl_FragColor = vec4(color,1.0);\n}\n";
-op.name="ColorBalance";
-
-var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-
-var tone=op.inValueSelect("Tone",["Highlights","Midtones","Shadows"],"Highlights");
-
-var r=op.inValue("r");
-var g=op.inValue("g");
-var b=op.inValue("b");
-
-var cgl=op.patch.cgl;
-var shader=new CGL.Shader(cgl);
-op.onLoaded=shader.compile;
-
-
-shader.setSource(shader.getDefaultVertexShader(),attachments.colorbalance_frag);
-var textureUniform=new CGL.Uniform(shader,'t','tex',0);
-var uniR=new CGL.Uniform(shader,'f','r',r);
-var uniG=new CGL.Uniform(shader,'f','g',g);
-var uniB=new CGL.Uniform(shader,'f','b',b);
-
-tone.onChange=function()
-{
-    shader.removeDefine("TONE_HIGH");
-    shader.removeDefine("TONE_MID");
-    shader.removeDefine("TONE_LOW");
-    if(tone.get()=="Highlights") shader.define("TONE_HIGH");
-    if(tone.get()=="Midtones") shader.define("TONE_MID");
-    if(tone.get()=="Shadows") shader.define("TONE_LOW");
-
-    op.log(tone.get());
-};
-
-
-render.onTriggered=function()
-{
-    if(!CGL.TextureEffect.checkOpInEffect(op)) return;
-
-    cgl.setShader(shader);
-    cgl.currentTextureEffect.bind();
-
-    cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-    cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, cgl.currentTextureEffect.getCurrentSourceTexture().tex );
-
-    cgl.currentTextureEffect.finish();
-    cgl.setPreviousShader();
-
-    trigger.trigger();
+    op.trigger.trigger();
 };
 
 
 };
 
-Ops.Gl.TextureEffects.ColorBalance.prototype = new CABLES.Op();
+Ops.Gl.ShaderEffects.MeshPixelNoise.prototype = new CABLES.Op();
 
 //----------------
 
@@ -2798,65 +1531,56 @@ Ops.Gl.Matrix.Transform.prototype = new CABLES.Op();
 
 // **************************************************************
 // 
-// Ops.Gl.TextureEffects.Levels
+// Ops.Anim.Timer
 // 
 // **************************************************************
 
-Ops.Gl.TextureEffects.Levels = function()
+Ops.Anim.Timer = function()
 {
 Op.apply(this, arguments);
 var op=this;
 var attachments={};
-attachments["levels_frag"]="IN vec2 texCoord;\nUNI sampler2D tex;\nUNI float inMin;\nUNI float inMax;\nUNI float midPoint;\nUNI float outMax;\nUNI float outMin;\n\nvoid main()\n{\n   vec4 base=texture2D(tex,texCoord);\n\n   vec4 inputRange = min(max(base - vec4(inMin), vec4(0.0)) / (vec4(inMax) - vec4(inMin)), vec4(outMax));\n   inputRange = pow(inputRange, vec4(1.0 / (1.5 - midPoint)));\n\n   gl_FragColor = mix(vec4(outMin), vec4(1.0), inputRange);\n\n}";
-op.name="Levels";
+var playPause=op.inValueBool("Play",true);
+var reset=op.inFunctionButton("Reset");
+var outTime=op.outValue("Time");
+var inSpeed=op.inValue("Speed",1);
 
-var render=op.addInPort(new Port(op,"Render",OP_PORT_TYPE_FUNCTION));
+var timer=new CABLES.Timer();
 
-var inMin=op.inValueSlider("In Min",0);
-var inMid=op.inValueSlider("Midpoint",0.5);
-var inMax=op.inValueSlider("In Max",1);
+playPause.onChange=setState;
+setState();
 
-var outMin=op.inValueSlider("Out Min",0);
-var outMax=op.inValueSlider("Out Max",1);
-
-var trigger=op.addOutPort(new Port(op,"Next",OP_PORT_TYPE_FUNCTION));
-
-var cgl=op.patch.cgl;
-var shader=new CGL.Shader(cgl);
-
-var uniInMin=new CGL.Uniform(shader,'f','inMin',inMin);
-var uniInMid=new CGL.Uniform(shader,'f','midPoint',inMid);
-var uniInMax=new CGL.Uniform(shader,'f','inMax',inMax);
-
-var uniOutMin=new CGL.Uniform(shader,'f','outMin',outMin);
-var uniOutMax=new CGL.Uniform(shader,'f','outMax',outMax);
-
-
-
-
-shader.setSource(shader.getDefaultVertexShader(),attachments.levels_frag);
-var textureUniform=new CGL.Uniform(shader,'t','tex',0);
-
-render.onTriggered=function()
+function setState()
 {
-    if(!CGL.TextureEffect.checkOpInEffect(op)) return;
+    if(playPause.get())
+    {
+        timer.play();
+        op.patch.addOnAnimFrame(op);
+    }
+    else
+    {
+        timer.pause();
+        op.patch.removeOnAnimFrame(op);
+    }
+}
 
-    cgl.setShader(shader);
-    cgl.currentTextureEffect.bind();
+reset.onTriggered=function()
+{
+    timer.setTime(0);
+    outTime.set(0);
+};
 
-    cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-    cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, cgl.currentTextureEffect.getCurrentSourceTexture().tex );
+op.onAnimFrame=function()
+{
+    timer.update();
+    outTime.set(timer.get()*inSpeed.get());
 
-    cgl.currentTextureEffect.finish();
-    cgl.setPreviousShader();
-
-    trigger.trigger();
 };
 
 
 };
 
-Ops.Gl.TextureEffects.Levels.prototype = new CABLES.Op();
+Ops.Anim.Timer.prototype = new CABLES.Op();
 
 //----------------
 
@@ -2864,55 +1588,38 @@ Ops.Gl.TextureEffects.Levels.prototype = new CABLES.Op();
 
 // **************************************************************
 // 
-// Ops.Gl.TextureEffects.BarrelDistortion
+// Ops.Anim.SineAnim
 // 
 // **************************************************************
 
-Ops.Gl.TextureEffects.BarrelDistortion = function()
+Ops.Anim.SineAnim = function()
 {
 Op.apply(this, arguments);
 var op=this;
 var attachments={};
-attachments["barreldistort_frag"]="IN vec2 texCoord;\nUNI sampler2D tex;\nUNI float amount;\n\n// adapted from https://www.shadertoy.com/view/MlSXR3\n\n\nvec2 brownConradyDistortion(vec2 uv)\n{\n// positive values of K1 give barrel distortion, negative give pincushion\n    float barrelDistortion1 = 0.15-amount; // K1 in text books\n    float barrelDistortion2 = 0.0-amount; // K2 in text books\n    float r2 = uv.x*uv.x + uv.y*uv.y;\n    uv *= 1.0 + barrelDistortion1 * r2 + barrelDistortion2 * r2 * r2;\n\n    // tangential distortion (due to off center lens elements)\n    // is not modeled in this function, but if it was, the terms would go here\n    return uv;\n}\n\nvoid main()\n{\n   vec2 tc=brownConradyDistortion(texCoord-0.5)+0.5;\n   vec4 col=texture2D(tex,tc);\n   gl_FragColor = col;\n}";
-op.name="BarrelDistortion";
+var exe=op.addInPort(new Port(op,"exe",OP_PORT_TYPE_FUNCTION));
+var result=op.addOutPort(new Port(op,"result"));
 
-var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-var amount=op.inValue("amount");
+var phase=op.addInPort(new Port(op,"phase",OP_PORT_TYPE_VALUE));
+var mul=op.addInPort(new Port(op,"frequency",OP_PORT_TYPE_VALUE));
+var amplitude=op.addInPort(new Port(op,"amplitude",OP_PORT_TYPE_VALUE));
 
-var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
+mul.set(1.0);
+amplitude.set(1.0);
+phase.set(1);
+exe.onTriggered=exec;
+exec();
 
-var cgl=op.patch.cgl;
-var shader=new CGL.Shader(cgl);
-
-shader.setSource(shader.getDefaultVertexShader(),attachments.barreldistort_frag);
-var textureUniform=new CGL.Uniform(shader,'t','tex',0);
-var uniamount=new CGL.Uniform(shader,'f','amount',0);
-
-
-render.onTriggered=function()
+function exec()
 {
-    if(!cgl.currentTextureEffect)return;
+    result.set( amplitude.get() * Math.sin( (op.patch.freeTimer.get()*mul.get()) + phase.get() ));
+}
 
-    var texture=cgl.currentTextureEffect.getCurrentSourceTexture();
-
-    uniamount.setValue(amount.get()*(1/texture.width));
-
-    cgl.setShader(shader);
-    cgl.currentTextureEffect.bind();
-
-    cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-    cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, texture.tex );
-
-    cgl.currentTextureEffect.finish();
-    cgl.setPreviousShader();
-
-    trigger.trigger();
-};
 
 
 };
 
-Ops.Gl.TextureEffects.BarrelDistortion.prototype = new CABLES.Op();
+Ops.Anim.SineAnim.prototype = new CABLES.Op();
 
 //----------------
 
@@ -2920,261 +1627,432 @@ Ops.Gl.TextureEffects.BarrelDistortion.prototype = new CABLES.Op();
 
 // **************************************************************
 // 
-// Ops.Gl.Matrix.TransformView
+// Ops.Exp.Gl.MatCapMaterialNew
 // 
 // **************************************************************
 
-Ops.Gl.Matrix.TransformView = function()
+Ops.Exp.Gl.MatCapMaterialNew = function()
 {
 Op.apply(this, arguments);
 var op=this;
 var attachments={};
-op.name="TransformView";
+attachments["matcap_frag"]="\n{{MODULES_HEAD}}\n\nIN vec3 norm;\nIN vec2 texCoord;\nUNI sampler2D tex;\nIN vec2 vNorm;\nUNI mat4 viewMatrix;\n\nUNI float repeatX;\nUNI float repeatY;\nUNI float opacity;\n\nUNI float r;\nUNI float g;\nUNI float b;\n\nIN vec3 e;\n\n#ifdef HAS_DIFFUSE_TEXTURE\n   UNI sampler2D texDiffuse;\n#endif\n\n#ifdef USE_SPECULAR_TEXTURE\n   UNI sampler2D texSpec;\n   UNI sampler2D texSpecMatCap;\n#endif\n\n#ifdef HAS_AO_TEXTURE\n    UNI sampler2D texAo;\n    UNI float aoIntensity;\n#endif\n\n#ifdef HAS_NORMAL_TEXTURE\n   IN vec3 vBiTangent;\n   IN vec3 vTangent;\n\n   UNI sampler2D texNormal;\n   UNI mat4 normalMatrix;\n   \n   vec2 vNormt;\n#endif\n\n#ifdef CALC_SSNORMALS\n    // from https://www.enkisoftware.com/devlogpost-20150131-1-Normal_generation_in_the_pixel_shader\n    IN vec3 eye_relative_pos;\n#endif\n\n\nconst float normalScale=0.4;\n\nvoid main()\n{\n    vec2 vnOrig=vNorm;\n    vec2 vn=vNorm;\n\n\n\n    #ifdef HAS_TEXTURES\n        vec2 texCoords=texCoord;\n        {{MODULE_BEGIN_FRAG}}\n    #endif\n\n    #ifdef CALC_SSNORMALS\n    \tvec3 dFdxPos = dFdx( eye_relative_pos );\n    \tvec3 dFdyPos = dFdy( eye_relative_pos );\n    \tvec3 ssn = normalize( cross(dFdxPos,dFdyPos ));\n    \t\n        vec3 rr = reflect( e, ssn );\n        float ssm = 2. * sqrt( \n            pow(rr.x, 2.0)+\n            pow(rr.y, 2.0)+\n            pow(rr.z + 1.0, 2.0)\n        );\n        \n        \n\n        \n        vn = (rr.xy / ssm + 0.5);\n        \n        vn.t=clamp(vn.t, 0.0, 1.0);\n        vn.s=clamp(vn.s, 0.0, 1.0);\n        \n        // float dst = dot(abs(coord-center), vec2(1.0));\n        // float aaf = fwidth(dst);\n        // float alpha = smoothstep(radius - aaf, radius, dst);\n\n    #endif\n\n   #ifdef HAS_NORMAL_TEXTURE\n        vec3 tnorm=texture2D( texNormal, vec2(texCoord.x*repeatX,texCoord.y*repeatY) ).xyz * 2.0 - 1.0;\n        \n        tnorm = normalize(tnorm*normalScale);\n        \n        vec3 tangent;\n        vec3 binormal;\n        \n        #ifdef CALC_TANGENT\n            vec3 c1 = cross(norm, vec3(0.0, 0.0, 1.0));\n//            vec3 c2 = cross(norm, vec3(0.0, 1.0, 0.0));\n//            if(length(c1)>length(c2)) tangent = c2;\n//                else tangent = c1;\n            tangent = c1;\n            tangent = normalize(tangent);\n            binormal = cross(norm, tangent);\n            binormal = normalize(binormal);\n        #endif\n\n        #ifndef CALC_TANGENT\n            tangent=normalize(vTangent);\n//            tangent.y*=-13.0;\n//            binormal=vBiTangent*norm;\n//            binormal.z*=-1.0;\n//            binormal=normalize(binormal);\n            binormal=normalize( cross( normalize(norm), normalize(vBiTangent) ));\n        // vBinormal = normalize( cross( vNormal, vTangent ) * tangent.w );\n\n        #endif\n\n        tnorm=normalize(tangent*tnorm.x + binormal*tnorm.y + norm*tnorm.z);\n\n        vec3 n = normalize( mat3(normalMatrix) * (norm+tnorm*normalScale) );\n\n        vec3 re = reflect( e, n );\n        float m = 2. * sqrt( \n            pow(re.x, 2.0)+\n            pow(re.y, 2.0)+\n            pow(re.z + 1.0, 2.0)\n        );\n        \n        vn = (re.xy / m + 0.5);\n        \n    #endif\n\n    vn.t=clamp(vn.t, 0.0, 1.0);\n    vn.s=clamp(vn.s, 0.0, 1.0);\n    vec4 col = texture2D( tex, vn );\n\n    #ifdef HAS_DIFFUSE_TEXTURE\n        col = col*texture2D( texDiffuse, vec2(texCoords.x*repeatX,texCoords.y*repeatY));\n    #endif\n\n    col.r*=r;\n    col.g*=g;\n    col.b*=b;\n\n\n    #ifdef HAS_AO_TEXTURE\n        col = col*\n            mix(\n                vec4(1.0,1.0,1.0,1.0),\n                texture2D( texAo, vec2(texCoords.x*repeatX,texCoords.y*repeatY)),\n                aoIntensity\n                );\n    #endif\n\n    #ifdef USE_SPECULAR_TEXTURE\n        vec4 spec = texture2D( texSpecMatCap, vn );\n        spec*= texture2D( texSpec, vec2(texCoords.x*repeatX,texCoords.y*repeatY) );\n        col+=spec;\n    #endif\n\n    col.a*=opacity;\n\n    {{MODULE_COLOR}}\n\n    outColor = col;\n\n}";
+attachments["matcap_vert"]="\nIN vec3 vPosition;\nIN vec2 attrTexCoord;\nIN vec3 attrVertNormal;\nIN float attrVertIndex;\n\n#ifdef HAS_NORMAL_TEXTURE\n   IN vec3 attrTangent;\n   IN vec3 attrBiTangent;\n\n   OUT vec3 vBiTangent;\n   OUT vec3 vTangent;\n#endif\n\nOUT vec2 texCoord;\nOUT vec3 norm;\nUNI mat4 projMatrix;\nUNI mat4 modelMatrix;\nUNI mat4 viewMatrix;\n\n#ifndef INSTANCING\n    UNI mat4 normalMatrix;\n#endif\nOUT vec2 vNorm;\n\nOUT vec3 e;\n\n{{MODULES_HEAD}}\n\n#ifdef CALC_SSNORMALS\n    // from https://www.enkisoftware.com/devlogpost-20150131-1-Normal_generation_in_the_pixel_shader\n    OUT vec3 eye_relative_pos;\n    UNI vec3 camPos;\n#endif\n\n\n\nvoid main()\n{\n    texCoord=attrTexCoord;\n    norm=attrVertNormal;\n    mat4 mMatrix=modelMatrix;\n    mat4 mvMatrix;\n    \n    #ifdef HAS_NORMAL_TEXTURE\n        vTangent=attrTangent;\n        vBiTangent=attrBiTangent;\n    #endif\n\n    vec4 pos = vec4( vPosition, 1. );\n\n    {{MODULE_VERTEX_POSITION}}\n\n\n    mvMatrix= viewMatrix * mMatrix;\n\n    #ifdef INSTANCING\n        mat4 normalMatrix=inverse(transpose(mvMatrix));\n    #endif\n    \n    e = normalize( vec3( mvMatrix * pos ) );\n    vec3 n = normalize( mat3(normalMatrix) * norm );\n\n    // mat3 nMatrix = transpose(inverse(mat3(mMatrix)));\n    // vec3 n = normalize( mat3(nMatrix) * norm );\n    // norm=n;\n\n    vec3 r = reflect( e, n );\n    float m = 2. * sqrt(\n        pow(r.x, 2.0)+\n        pow(r.y, 2.0)+\n        pow(r.z + 1.0, 2.0)\n    );\n    vNorm = r.xy / m + 0.5;\n\n    #ifdef DO_PROJECT_COORDS_XY\n       texCoord=(projMatrix * mvMatrix*pos).xy*0.1;\n    #endif\n\n    #ifdef DO_PROJECT_COORDS_YZ\n       texCoord=(projMatrix * mvMatrix*pos).yz*0.1;\n    #endif\n\n    #ifdef DO_PROJECT_COORDS_XZ\n        texCoord=(projMatrix * mvMatrix*pos).xz*0.1;\n    #endif\n\n    #ifdef CALC_SSNORMALS\n        eye_relative_pos = (mvMatrix * pos ).xyz - camPos;\n    #endif\n\n\n\n   gl_Position = projMatrix * mvMatrix * pos;\n\n}";
+
 
 var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-
-var posX=op.addInPort(new Port(op,"posX"),0);
-var posY=op.addInPort(new Port(op,"posY"),0);
-var posZ=op.addInPort(new Port(op,"posZ"),0);
-
-var scale=op.addInPort(new Port(op,"scale"));
-
-var rotX=op.addInPort(new Port(op,"rotX"));
-var rotY=op.addInPort(new Port(op,"rotY"));
-var rotZ=op.addInPort(new Port(op,"rotZ"));
+var textureMatcap=op.inTexture('MatCap');
+var textureDiffuse=op.inTexture('Diffuse');
+var textureNormal=op.inTexture('Normal');
+var textureSpec=op.inTexture('Specular');
+var textureSpecMatCap=op.inTexture('Specular MatCap');
+var textureAo=op.inTexture('AO Texture');
 
 var cgl=op.patch.cgl;
-var vPos=vec3.create();
-var vScale=vec3.create();
-var transMatrix = mat4.create();
-mat4.identity(transMatrix);
 
-var doScale=false;
-var doTranslate=false;
-
-var translationChanged=true;
-var scaleChanged=true;
-var rotChanged=true;
-
-render.onTriggered=function()
 {
-    
-    
+    // rgba colors
+    var r=op.addInPort(new Port(op,"r",OP_PORT_TYPE_VALUE,{ display:'range',colorPick:'true' })); r.set(1);
+    var g=op.inValueSlider('g',1);
+    var b=op.inValueSlider('b',1);
+}
 
-    
-    
-    var updateMatrix=false;
-    if(translationChanged)
+var aoIntensity=op.inValueSlider("AO Intensity",1.0);
+var repeatX=op.inValue("Repeat X",1);
+var repeatY=op.inValue("Repeat Y",1);
+var pOpacity=op.inValueSlider("Opacity",1);
+var calcTangents = op.inValueBool("calc normal tangents",true);
+var projectCoords=op.inValueSelect('projectCoords',['no','xy','yz','xz'],'no');
+var ssNormals=op.inValueBool("Screen Space Normals");
+
+var next=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
+var shaderOut=op.outObject("Shader");
+
+
+
+var shader=new CGL.Shader(cgl,'MatCapMaterialNew');
+
+var uniOpacity=new CGL.Uniform(shader,'f','opacity',pOpacity);
+
+shader.setModules(['MODULE_VERTEX_POSITION','MODULE_COLOR','MODULE_BEGIN_FRAG']);
+shader.bindTextures=bindTextures;
+shader.setSource(attachments.matcap_vert,attachments.matcap_frag);
+shaderOut.set(shader);
+
+var textureMatcapUniform=null;
+var textureDiffuseUniform=null;
+var textureNormalUniform=null;
+var textureSpecUniform=null;
+var textureSpecMatCapUniform=null;
+var textureAoUniform=null;
+var repeatXUniform=new CGL.Uniform(shader,'f','repeatX',repeatX);
+var repeatYUniform=new CGL.Uniform(shader,'f','repeatY',repeatY);
+var aoIntensityUniform=new CGL.Uniform(shader,'f','aoIntensity',aoIntensity);
+b.uniform=new CGL.Uniform(shader,'f','b',b);
+g.uniform=new CGL.Uniform(shader,'f','g',g);
+r.uniform=new CGL.Uniform(shader,'f','r',r);
+
+
+
+calcTangents.onChange=updateCalcTangent;
+updateCalcTangent();
+updateMatcap();
+
+function updateCalcTangent()
+{
+    if(calcTangents.get()) shader.define('CALC_TANGENT');
+        else shader.removeDefine('CALC_TANGENT');
+}
+
+ssNormals.onChange=function()
+{
+    if(ssNormals.get())
     {
-        updateTranslation();
-        updateMatrix=true;
+        if(cgl.glVersion<2)
+        {
+            cgl.gl.getExtension('OES_standard_derivatives');
+            shader.enableExtension('GL_OES_standard_derivatives');
+        }
+
+        shader.define('CALC_SSNORMALS');
     }
-    if(scaleChanged)
+    else shader.removeDefine('CALC_SSNORMALS');
+};
+
+projectCoords.onChange=function()
+{
+    shader.removeDefine('DO_PROJECT_COORDS_XY');
+    shader.removeDefine('DO_PROJECT_COORDS_YZ');
+    shader.removeDefine('DO_PROJECT_COORDS_XZ');
+
+    if(projectCoords.get()=='xy') shader.define('DO_PROJECT_COORDS_XY');
+    else if(projectCoords.get()=='yz') shader.define('DO_PROJECT_COORDS_YZ');
+    else if(projectCoords.get()=='xz') shader.define('DO_PROJECT_COORDS_XZ');
+};
+
+textureMatcap.onChange=updateMatcap;
+
+function updateMatcap()
+{
+    if(textureMatcap.get())
     {
-        updateScale();
-        updateMatrix=true;
+        if(textureMatcapUniform!==null)return;
+        shader.removeUniform('tex');
+        textureMatcapUniform=new CGL.Uniform(shader,'t','tex',0);
     }
-    if(rotChanged)
+    else
     {
-        updateMatrix=true;
-    }
-    if(updateMatrix)doUpdateMatrix();
-
-    cgl.pushViewMatrix();
-    mat4.multiply(cgl.vMatrix,cgl.vMatrix,transMatrix);
-
-
-
-
-
-
-
-
-
-
-    trigger.trigger();
-    cgl.popViewMatrix();
-    
-    if(CABLES.UI && gui.patch().isCurrentOp(op)) 
-        gui.setTransformGizmo(
+        if(!CGL.defaultTextureMap)
+        {
+            var pixels=new Uint8Array(256*4);
+            for(var x=0;x<16;x++)
             {
-                posX:posX,
-                posY:posY,
-                posZ:posZ,
+                for(var y=0;y<16;y++)
+                {
+                    var c=y*16;
+                    c*=Math.min(1,(x+y/3)/8);
+                    pixels[(x+y*16)*4+0]=pixels[(x+y*16)*4+1]=pixels[(x+y*16)*4+2]=c;
+                    pixels[(x+y*16)*4+3]=255;
+                }
+            }
+
+            CGL.defaultTextureMap=new CGL.Texture(cgl);
+            CGL.defaultTextureMap.initFromData(pixels,16,16);
+        }
+        textureMatcap.set(CGL.defaultTextureMap);
+
+        shader.removeUniform('tex');
+        textureMatcapUniform=new CGL.Uniform(shader,'t','tex',0);
+    }
+}
+
+textureDiffuse.onChange=function()
+{
+    if(textureDiffuse.get())
+    {
+        if(textureDiffuseUniform!==null)return;
+        shader.define('HAS_DIFFUSE_TEXTURE');
+        shader.removeUniform('texDiffuse');
+        textureDiffuseUniform=new CGL.Uniform(shader,'t','texDiffuse',1);
+    }
+    else
+    {
+        shader.removeDefine('HAS_DIFFUSE_TEXTURE');
+        shader.removeUniform('texDiffuse');
+        textureDiffuseUniform=null;
+    }
+};
+
+textureNormal.onChange=function()
+{
+    if(textureNormal.get())
+    {
+        if(textureNormalUniform!==null)return;
+        shader.define('HAS_NORMAL_TEXTURE');
+        shader.removeUniform('texNormal');
+        textureNormalUniform=new CGL.Uniform(shader,'t','texNormal',2);
+    }
+    else
+    {
+        shader.removeDefine('HAS_NORMAL_TEXTURE');
+        shader.removeUniform('texNormal');
+        textureNormalUniform=null;
+    }
+};
+
+textureAo.onChange=function()
+{
+    if(textureAo.get())
+    {
+        if(textureAoUniform!==null)return;
+        shader.define('HAS_AO_TEXTURE');
+        shader.removeUniform('texAo');
+        textureAoUniform=new CGL.Uniform(shader,'t','texAo',5);
+    }
+    else
+    {
+        shader.removeDefine('HAS_AO_TEXTURE');
+        shader.removeUniform('texAo');
+        textureAoUniform=null;
+    }
+};
+
+textureSpec.onChange=textureSpecMatCap.onChange=function()
+{
+    if(textureSpec.get() && textureSpecMatCap.get())
+    {
+        if(textureSpecUniform!==null)return;
+        shader.define('USE_SPECULAR_TEXTURE');
+        shader.removeUniform('texSpec');
+        shader.removeUniform('texSpecMatCap');
+        textureSpecUniform=new CGL.Uniform(shader,'t','texSpec',3);
+        textureSpecMatCapUniform=new CGL.Uniform(shader,'t','texSpecMatCap',4);
+    }
+    else
+    {
+        shader.removeDefine('USE_SPECULAR_TEXTURE');
+        shader.removeUniform('texSpec');
+        shader.removeUniform('texSpecMatCap');
+        textureSpecUniform=null;
+        textureSpecMatCapUniform=null;
+    }
+};
+
+function bindTextures()
+{
+    if(textureMatcap.get())     cgl.setTexture(0,textureMatcap.get().tex);
+    if(textureDiffuse.get())    cgl.setTexture(1,textureDiffuse.get().tex);
+    if(textureNormal.get())     cgl.setTexture(2,textureNormal.get().tex);
+    if(textureSpec.get())       cgl.setTexture(3,textureSpec.get().tex);
+    if(textureSpecMatCap.get()) cgl.setTexture(4,textureSpecMatCap.get().tex);
+    if(textureAo.get())         cgl.setTexture(5,textureAo.get().tex);
+};
+
+
+op.onDelete=function()
+{
+    if(CGL.defaultTextureMap)
+    {
+        CGL.defaultTextureMap.delete();
+        CGL.defaultTextureMap=null;
+    }
+};
+
+op.preRender=function()
+{
+    shader.bind();
+};
+
+render.onTriggered=function()
+{
+    shader.bindTextures=bindTextures;
+    cgl.setShader(shader);
+    next.trigger();
+    cgl.setPreviousShader();
+};
+
+
+
+};
+
+Ops.Exp.Gl.MatCapMaterialNew.prototype = new CABLES.Op();
+
+//----------------
+
+
+
+// **************************************************************
+// 
+// Ops.Gl.Texture
+// 
+// **************************************************************
+
+Ops.Gl.Texture = function()
+{
+Op.apply(this, arguments);
+var op=this;
+var attachments={};
+var filename=op.addInPort(new Port(op,"file",OP_PORT_TYPE_VALUE,{ display:'file',type:'string',filter:'image' } ));
+var tfilter=op.inValueSelect("filter",['nearest','linear','mipmap']);
+var wrap=op.inValueSelect("wrap",['repeat','mirrored repeat','clamp to edge'],"clamp to edge");
+var flip=op.addInPort(new Port(op,"flip",OP_PORT_TYPE_VALUE,{display:'bool'}));
+var unpackAlpha=op.addInPort(new Port(op,"unpackPreMultipliedAlpha",OP_PORT_TYPE_VALUE,{display:'bool'}));
+
+
+var textureOut=op.outTexture("texture");
+var width=op.addOutPort(new Port(op,"width",OP_PORT_TYPE_VALUE));
+var height=op.addOutPort(new Port(op,"height",OP_PORT_TYPE_VALUE));
+var loading=op.addOutPort(new Port(op,"loading",OP_PORT_TYPE_VALUE));
+var ratio=op.outValue("Aspect Ratio");
+
+flip.set(false);
+unpackAlpha.set(false);
+unpackAlpha.hidePort();
+
+var cgl=op.patch.cgl;
+var cgl_filter=0;
+var cgl_wrap=0;
+
+flip.onChange=function(){reload();};
+filename.onChange=reload;
+
+tfilter.onChange=onFilterChange;
+wrap.onChange=onWrapChange;
+unpackAlpha.onChange=function(){ reload(); };
+
+var timedLoader=0;
+
+var setTempTexture=function()
+{
+    var t=CGL.Texture.getTempTexture(cgl);
+    textureOut.set(t);
+};
+
+var loadingId=null;
+
+function reload(nocache)
+{
+    if(!loadingId)loadingId=cgl.patch.loading.start('texture',filename.get());
+    clearTimeout(timedLoader);
+    timedLoader=setTimeout(function()
+    {
+        realReload(nocache);
+    },30);
+}
+
+function realReload(nocache)
+{
+    if(!loadingId)loadingId=cgl.patch.loading.start('texture',filename.get());
+    
+    var url=op.patch.getFilePath(String(filename.get()));
+    if(nocache)url+='?rnd='+CABLES.generateUUID();
+
+    if((filename.get() && filename.get().length>1))
+    {
+        loading.set(true);
+
+        var tex=CGL.Texture.load(cgl,url,
+            function(err)
+            {
+                // console.log('tex loaded!!');
+
+                if(err)
+                {
+                    setTempTexture();
+                    op.uiAttr({'error':'could not load texture "'+filename.get()+'"'});
+                    cgl.patch.loading.finished(loadingId);
+                    return;
+                }
+                else op.uiAttr({'error':null});
+                textureOut.set(tex);
+                width.set(tex.width);
+                height.set(tex.height);
+                ratio.set(tex.width/tex.height);
+
+                if(!tex.isPowerOfTwo()) op.uiAttr(
+                    {
+                        hint:'texture dimensions not power of two! - texture filtering will not work.',
+                        warning:null
+                    });
+                    else op.uiAttr(
+                        {
+                            hint:null,
+                            warning:null
+                        });
+
+                textureOut.set(null);
+                textureOut.set(tex);
+                cgl.patch.loading.finished(loadingId);
+                
+                // tex.printInfo();
+
+            },{
+                wrap:cgl_wrap,
+                flip:flip.get(),
+                unpackAlpha:unpackAlpha.get(),
+                filter:cgl_filter
             });
 
-    
-};
+        textureOut.set(null);
+        textureOut.set(tex);
 
-op.transform3d=function()
-{
-    return {
-            pos:[posX,posY,posZ]
-        };
-    
-};
-
-var doUpdateMatrix=function()
-{
-    mat4.identity(transMatrix);
-    if(doTranslate)mat4.translate(transMatrix,transMatrix, vPos);
-
-    if(rotX.get()!==0)mat4.rotateX(transMatrix,transMatrix, rotX.get()*CGL.DEG2RAD);
-    if(rotY.get()!==0)mat4.rotateY(transMatrix,transMatrix, rotY.get()*CGL.DEG2RAD);
-    if(rotZ.get()!==0)mat4.rotateZ(transMatrix,transMatrix, rotZ.get()*CGL.DEG2RAD);
-
-    if(doScale)mat4.scale(transMatrix,transMatrix, vScale);
-    rotChanged=false;
-};
-
-function updateTranslation()
-{
-    doTranslate=false;
-    if(posX.get()!==0.0 || posY.get()!==0.0 || posZ.get()!==0.0) doTranslate=true;
-    vec3.set(vPos, posX.get(),posY.get(),posZ.get());
-    translationChanged=false;
-}
-
-function updateScale()
-{
-    doScale=false;
-    if(scale.get()!==0.0)doScale=true;
-    vec3.set(vScale, scale.get(),scale.get(),scale.get());
-    scaleChanged=false;
-}
-
-var translateChanged=function()
-{
-    translationChanged=true;
-};
-
-var scaleChanged=function()
-{
-    scaleChanged=true;
-};
-
-var rotChanged=function()
-{
-    rotChanged=true;
-};
-
-
-rotX.onChange=rotChanged;
-rotY.onChange=rotChanged;
-rotZ.onChange=rotChanged;
-
-scale.onChange=scaleChanged;
-
-posX.onChange=translateChanged;
-posY.onChange=translateChanged;
-posZ.onChange=translateChanged;
-
-rotX.set(0.0);
-rotY.set(0.0);
-rotZ.set(0.0);
-
-scale.set(1.0);
-
-posX.set(0.0);
-posY.set(0.0);
-posZ.set(0.0);
-
-doUpdateMatrix();
-
-
-
-};
-
-Ops.Gl.Matrix.TransformView.prototype = new CABLES.Op();
-
-//----------------
-
-
-
-// **************************************************************
-// 
-// Ops.Gl.TextureEffects.ChromaticAberration
-// 
-// **************************************************************
-
-Ops.Gl.TextureEffects.ChromaticAberration = function()
-{
-Op.apply(this, arguments);
-var op=this;
-var attachments={};
-attachments["chromatic_frag"]="\nIN vec2 texCoord;\nUNI sampler2D tex;\nUNI float pixel;\nUNI float onePixel;\nUNI float amount;\nUNI float lensDistort;\n\n#ifdef MASK\nUNI sampler2D texMask;\n#endif\n\nvoid main()\n{\n\n   vec4 col=texture2D(tex,texCoord);\n\n   vec2 tc=texCoord;;\n   float pix = pixel;\n   if(lensDistort>0.0)\n   {\n       float dist = distance(texCoord, vec2(0.5,0.5));\n       tc-=0.5;\n       tc *=smoothstep(-0.9,1.0*lensDistort,1.0-dist);\n       tc+=0.5;\n   }\n\n    #ifdef MASK\n        vec4 m=texture2D(texMask,texCoord);\n        pix*=m.r*m.a;\n    #endif\n\n    #ifdef SMOOTH\n        float samples=round(pix/onePixel/4.0+1.0);\n        col.r=0.0;\n        col.b=0.0;\n        // float b=0.0;\n        for(float off=0.0;off<samples;off++)\n        {\n            float diff=(pix/samples)*off;\n            col.r+=texture2D(tex,vec2(tc.x+diff,tc.y)).r/samples;\n            col.b+=texture2D(tex,vec2(tc.x-diff,tc.y)).b/samples;\n        }\n    #endif\n\n    #ifndef SMOOTH\n        col.r=texture2D(tex,vec2(tc.x+pix,tc.y)).r;\n        col.b=texture2D(tex,vec2(tc.x-pix,tc.y)).b;\n    #endif\n\n   outColor = col;\n\n}\n";
-op.name="ChromaticAberration";
-
-var render=op.addInPort(new Port(op,"render",OP_PORT_TYPE_FUNCTION));
-var pixel=op.inValue("Pixel",5);
-var lensDistort=op.inValueSlider("Lens Distort",0);
-
-var textureMask=op.inTexture("Mask");
-
-var doSmooth=op.inValueBool("Smooth",false);
-
-var trigger=op.addOutPort(new Port(op,"trigger",OP_PORT_TYPE_FUNCTION));
-
-var cgl=op.patch.cgl;
-var shader=new CGL.Shader(cgl);
-
-
-doSmooth.onChange=function()
-{
-    if(doSmooth.get())shader.define("SMOOTH");
-        else shader.removeDefine("SMOOTH");
-};
-
-textureMask.onChange=function()
-{
-    if(textureMask.get())shader.define("MASK");
-        else shader.removeDefine("MASK");
-};
-
-
-shader.setSource(shader.getDefaultVertexShader(),attachments.chromatic_frag);
-var textureUniform=new CGL.Uniform(shader,'t','tex',0);
-var uniPixel=new CGL.Uniform(shader,'f','pixel',0);
-var uniOnePixel=new CGL.Uniform(shader,'f','onePixel',0);
-var unitexMask=new CGL.Uniform(shader,'t','texMask',1);
-
-var unilensDistort=new CGL.Uniform(shader,'f','lensDistort',lensDistort);
-
-render.onTriggered=function()
-{
-    if(!cgl.currentTextureEffect)return;
-
-    var texture=cgl.currentTextureEffect.getCurrentSourceTexture();
-
-    uniPixel.setValue(pixel.get()*(1/texture.width));
-    uniOnePixel.setValue(1/texture.width);
-
-    cgl.setShader(shader);
-    cgl.currentTextureEffect.bind();
-
-    cgl.gl.activeTexture(cgl.gl.TEXTURE0);
-    cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, texture.tex );
-    
-    if(textureMask.get())
-    {
-        cgl.gl.activeTexture(cgl.gl.TEXTURE1);
-        cgl.gl.bindTexture(cgl.gl.TEXTURE_2D, textureMask.get().tex );
-        
+        if(!textureOut.get() && nocache)
+        {
+        }
+        loading.set(false);
+        cgl.patch.loading.finished(loadingId);
     }
-    
-    
+    else
+    {
+        cgl.patch.loading.finished(loadingId);
+        setTempTexture();
+    }
+}
 
-    cgl.currentTextureEffect.finish();
-    cgl.setPreviousShader();
 
-    trigger.trigger();
+function onFilterChange()
+{
+    if(tfilter.get()=='nearest') cgl_filter=CGL.Texture.FILTER_NEAREST;
+    if(tfilter.get()=='linear') cgl_filter=CGL.Texture.FILTER_LINEAR;
+    if(tfilter.get()=='mipmap') cgl_filter=CGL.Texture.FILTER_MIPMAP;
+
+    reload();
+}
+
+function onWrapChange()
+{
+    if(wrap.get()=='repeat') cgl_wrap=CGL.Texture.WRAP_REPEAT;
+    if(wrap.get()=='mirrored repeat') cgl_wrap=CGL.Texture.WRAP_MIRRORED_REPEAT;
+    if(wrap.get()=='clamp to edge') cgl_wrap=CGL.Texture.WRAP_CLAMP_TO_EDGE;
+
+    reload();
+}
+
+op.onFileUploaded=function(fn)
+{
+    if(filename.get() && filename.get().indexOf(fn)>-1)
+    {
+        textureOut.set(null);
+        textureOut.set(CGL.Texture.getTempTexture(cgl));
+
+        realReload(true);
+    }
 };
 
 
+
+
+tfilter.set('linear');
+wrap.set('repeat');
+
+
+textureOut.set(CGL.Texture.getEmptyTexture(cgl));
+
+
+
 };
 
-Ops.Gl.TextureEffects.ChromaticAberration.prototype = new CABLES.Op();
+Ops.Gl.Texture.prototype = new CABLES.Op();
 
 //----------------
 
