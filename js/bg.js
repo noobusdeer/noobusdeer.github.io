@@ -21,7 +21,7 @@ function init() {
 
     container = document.getElementById('bg');
     camera = new THREE.PerspectiveCamera(20, window.innerWidth / window.innerHeight, 1, 10000);
-    //camera.position.z = 1800;
+    camera.position.z = 1800;
 
     if(mobile) controls = new THREE.DeviceOrientationControls( camera );
 
@@ -74,7 +74,8 @@ function render() {
     if(!mobile){
         camera.position.x += (mouseX - camera.position.x) * 0.05;
         camera.position.y += (-mouseY - camera.position.y) * 0.05;
-        camera.lookAt(scene.position);
+        
     }
+    camera.lookAt(scene.position);
     renderer.render(scene, camera);
 }
