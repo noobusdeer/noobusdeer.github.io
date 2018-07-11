@@ -63,22 +63,18 @@ function onDocumentMouseMove(event) {
     mouseX = (event.clientX - windowHalfX);
     mouseY = (event.clientY - windowHalfY);
 }
-	
-function onDeviceOrientationChangeEvent( event ) {
-    //mouseX = (event.clientX - windowHalfX);
-    //mouseY = (event.clientY - windowHalfY);
-    scope.deviceOrientation = event;
-}
 
 function animate() {
+    if(mobile) controls.update();
     requestAnimationFrame(animate);
     render();
 }
 
 function render() {
-    if(mobile) controls.update();
-    camera.position.x += (mouseX - camera.position.x) * 0.05;
-    camera.position.y += (-mouseY - camera.position.y) * 0.05;
-    camera.lookAt(scene.position);
+    if(!mobile){
+        camera.position.x += (mouseX - camera.position.x) * 0.05;
+        camera.position.y += (-mouseY - camera.position.y) * 0.05;
+        camera.lookAt(scene.position);
+    }
     renderer.render(scene, camera);
 }
