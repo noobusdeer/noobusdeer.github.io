@@ -43,10 +43,10 @@ function init() {
       };
 
     if(window.mobilecheck()){
-
+        window.addEventListener( 'deviceorientation', onDeviceOrientationChangeEvent, false );
     }
     else {
-        document.addEventListener('mousemove', onDocumentMouseMove, false);
+        window.addEventListener('mousemove', onDocumentMouseMove, false);
     }
     document.addEventListener('resize', onWindowResize, false);
 }
@@ -62,6 +62,12 @@ function onWindowResize() {
 function onDocumentMouseMove(event) {
     mouseX = (event.clientX - windowHalfX);
     mouseY = (event.clientY - windowHalfY);
+}
+	
+function onDeviceOrientationChangeEvent( event ) {
+    mouseX = (event.clientX - windowHalfX);
+    mouseY = (event.clientY - windowHalfY);
+    scope.deviceOrientation = event;
 }
 
 function animate() {
