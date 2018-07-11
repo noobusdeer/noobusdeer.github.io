@@ -21,7 +21,7 @@ function init() {
 
     container = document.getElementById('bg');
     camera = new THREE.PerspectiveCamera(20, window.innerWidth / window.innerHeight, 1, 10000);
-    camera.position.z = 1800;
+    //camera.position.z = 1800;
 
     if(mobile) controls = new THREE.DeviceOrientationControls( camera );
 
