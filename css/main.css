@@ -743,6 +743,10 @@ button {
 
 /* BG */
 #bg {
+  display: -moz-flex;
+  display: -webkit-flex;
+  display: -ms-flex;
+  display: flex;
   -moz-transform: scale(1.0);
   -webkit-transform: scale(1.0);
   -ms-transform: scale(1.0);
