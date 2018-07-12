@@ -79,8 +79,8 @@ function render() {
         camera.position.y += (-mouseY - camera.position.y) * 0.05;
     }
     else {
-        camera.position.x += (notRenderMesh.rotation.y - camera.position.x) * 10;
-        camera.position.y += (-notRenderMesh.rotation.x - camera.position.y) * 10;
+        camera.position.x += (notRenderMesh.rotation.y - camera.position.x) * 2;
+        camera.position.y += (-notRenderMesh.rotation.x - camera.position.y) * 2;
     }
     camera.lookAt(scene.position);
     renderer.render(scene, camera);
