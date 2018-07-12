@@ -1,36 +1,18 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-
-  
-  <url>
-    <loc>http://noobusdeer.com/#about</loc>
-    <lastmod>2018-07-10T15:53:09+03:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://noobusdeer.com/#init</loc>
-    <lastmod>2018-07-10T15:52:01+03:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://noobusdeer.com/#work</loc>
-    <lastmod>2018-07-10T15:51:07+03:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://noobusdeer.com/#</loc>
-    <priority>0</priority>
-  </url>
-  
-  <url>
-    <loc>http://noobusdeer.com/#</loc>
-    <priority>0</priority>
-  </url>
-  
-  <url>
-    <loc>http://noobusdeer.com/#</loc>
-    <lastmod>2018-07-10T15:53:09+03:00</lastmod>
-    <priority>0</priority>
-  </url>
-  
-</urlset>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+	
+	<sitemap>
+	   	<loc>http://noobusdeer.com/en/sitemap.xml</loc>
+		
+	   	<lastmod>2018-07-12T14:21:29+03:00</lastmod>
+		
+	</sitemap>
+	
+	<sitemap>
+	   	<loc>http://noobusdeer.com/ru/sitemap.xml</loc>
+		
+	   	<lastmod>2018-07-12T14:21:34+03:00</lastmod>
+		
+	</sitemap>
+	
+</sitemapindex>
