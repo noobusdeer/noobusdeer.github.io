@@ -37,7 +37,7 @@ function init() {
     
     if(mobile) {
         notRenderMesh = new THREE.Mesh(geometry, wireframeMaterial);
-        controls = new THREE.DeviceOrientationControls( rotateEmpty );
+        controls = new THREE.DeviceOrientationControls( notRenderMesh );
     }
 
     scene.add(wireframe);
