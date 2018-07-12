@@ -69,8 +69,8 @@ function onDocumentMouseMove(event) {
 function animate() {
     if(mobile){
         controls.update();
-        camera.position.x += (notRenderMesh.rotation.x ) * 0.05;
-        camera.position.y += (- notRenderMesh.rotation.y ) * 0.05;
+        camera.position.x += (notRenderMesh.rotation.x );// * 0.05;
+        camera.position.y += (- notRenderMesh.rotation.y );// * 0.05;
     } 
     requestAnimationFrame(animate);
     render();
