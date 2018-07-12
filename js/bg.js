@@ -4,6 +4,7 @@ var container, stats;
 var camera, scene, renderer, controls;
 var mouseX = 0,
     mouseY = 0;
+var notRenderMesh;
 var windowHalfX = window.innerWidth / 2;
 var windowHalfY = window.innerHeight / 2;
 var mobile = false;
@@ -22,9 +23,6 @@ function init() {
     container = document.getElementById('bg');
     camera = new THREE.PerspectiveCamera(20, window.innerWidth / window.innerHeight, 1, 10000);
     camera.position.z = 1800;
-
-   
-
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
     var radius = 250;
@@ -36,16 +34,19 @@ function init() {
         transparent: true
     });
     wireframe = new THREE.Mesh(geometry, wireframeMaterial);
+    
+    if(mobile) {
+        notRenderMesh = new THREE.Mesh(geometry, wireframeMaterial);
+        controls = new THREE.DeviceOrientationControls( rotateEmpty );
+    }
+
     scene.add(wireframe);
-    if(mobile) controls = new THREE.DeviceOrientationControls( wireframe );
     renderer = new THREE.WebGLRenderer({
         antialias: true
     });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
-
-
 
     if(!mobile) window.addEventListener('mousemove', onDocumentMouseMove, false);
 
@@ -66,7 +67,11 @@ function onDocumentMouseMove(event) {
 }
 
 function animate() {
-    if(mobile) controls.update();
+    if(mobile){
+        controls.update();
+        camera.position.x += (notRenderMesh.rotation.x - camera.position.x) * 0.05;
+        camera.position.y += (- notRenderMesh.rotation.y - camera.position.y) * 0.05;
+    } 
     requestAnimationFrame(animate);
     render();
 }
@@ -75,7 +80,6 @@ function render() {
     if(!mobile){
         camera.position.x += (mouseX - camera.position.x) * 0.05;
         camera.position.y += (-mouseY - camera.position.y) * 0.05;
-        
     }
     camera.lookAt(scene.position);
     renderer.render(scene, camera);
