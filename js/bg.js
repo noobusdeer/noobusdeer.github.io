@@ -25,15 +25,15 @@ function init() {
     camera.position.z = 1800;
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
+
     var radius = 250;
     geometry = new THREE.IcosahedronGeometry(radius, 1);
-    var  wireframe;
     var wireframeMaterial = new THREE.MeshBasicMaterial({
         color: 0x606060,
         wireframe: true,
         transparent: true
     });
-    wireframe = new THREE.Mesh(geometry, wireframeMaterial);
+    var wireframe = new THREE.Mesh(geometry, wireframeMaterial);
     
     if(mobile) {
         notRenderMesh = new THREE.Mesh(geometry, wireframeMaterial);
@@ -79,8 +79,8 @@ function render() {
         camera.position.y += (-mouseY - camera.position.y) * 0.05;
     }
     else {
-        camera.position.x += (notRenderMesh.rotation.x );// * 0.05;
-        camera.position.y += (- notRenderMesh.rotation.y );// * 0.05;
+        camera.position.x += (notRenderMesh.rotation.x - camera.position.x) * 5;
+        camera.position.y += (- notRenderMesh.rotation.y - camera.position.y ) * 5;
     }
     camera.lookAt(scene.position);
     renderer.render(scene, camera);
