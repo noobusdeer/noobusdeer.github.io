@@ -23,7 +23,7 @@ function init() {
     camera = new THREE.PerspectiveCamera(20, window.innerWidth / window.innerHeight, 1, 10000);
     camera.position.z = 1800;
 
-    if(mobile) controls = new THREE.DeviceOrientationControls( camera );
+   
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
@@ -37,6 +37,7 @@ function init() {
     });
     wireframe = new THREE.Mesh(geometry, wireframeMaterial);
     scene.add(wireframe);
+    if(mobile) controls = new THREE.DeviceOrientationControls( wireframe );
     renderer = new THREE.WebGLRenderer({
         antialias: true
     });
