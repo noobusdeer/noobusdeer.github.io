@@ -50,7 +50,7 @@ function init() {
 
     if(!mobile) window.addEventListener('mousemove', onDocumentMouseMove, false);
 
-    document.addEventListener('resize', onWindowResize, false);
+    window.addEventListener('resize', onWindowResize, false);
 }
 
 function onWindowResize() {
