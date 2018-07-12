@@ -67,11 +67,8 @@ function onDocumentMouseMove(event) {
 }
 
 function animate() {
-    if(mobile){
-        controls.update();
-        camera.position.x += (notRenderMesh.rotation.x );// * 0.05;
-        camera.position.y += (- notRenderMesh.rotation.y );// * 0.05;
-    } 
+    if(mobile) controls.update();
+
     requestAnimationFrame(animate);
     render();
 }
@@ -80,6 +77,10 @@ function render() {
     if(!mobile){
         camera.position.x += (mouseX - camera.position.x) * 0.05;
         camera.position.y += (-mouseY - camera.position.y) * 0.05;
+    }
+    else {
+        camera.position.x += (notRenderMesh.rotation.x );// * 0.05;
+        camera.position.y += (- notRenderMesh.rotation.y );// * 0.05;
     }
     camera.lookAt(scene.position);
     renderer.render(scene, camera);
